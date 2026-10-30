@@ -7,6 +7,7 @@ struct LessonActivity: ActivityAttributes {
         var room: String
         var start: Date
         var end: Date
+        var hasStarted: Bool
     }
     var lessonID: String
     var account: String

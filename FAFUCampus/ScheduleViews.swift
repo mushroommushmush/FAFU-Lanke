@@ -108,6 +108,16 @@ struct ScheduleHome: View {
                             Text("调停课暂不自动合并。可删除当天原课程，再手动添加调整后的课程。").font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    if let report {
+                        DisclosureGroup("学校原始课表") {
+                            ForEach(report.courses) { cell in
+                                VStack(alignment: .leading) {
+                                    Text("周\(weekdays[max(0, min(6, cell.weekday - 1))]) · \(cell.period)").font(.caption)
+                                    Text(cell.content).font(.callout).textSelection(.enabled)
+                                }.padding(.vertical, 6)
+                            }
+                        }
+                    }
                 }.padding(16)
             }
             .background(Palette.background).navigationTitle("我的课表")
@@ -266,14 +276,17 @@ struct ScheduleSettings: View {
                         SchoolSchedule.calendar.date(byAdding: .minute, value: planner.saved.starts[index], to: SchoolSchedule.date(2026, 1, 1))!
                     }, set: { value in
                         let p = SchoolSchedule.calendar.dateComponents([.hour, .minute], from: value)
-                        planner.saved.starts[index] = p.hour! * 60 + p.minute!; planner.persist()
+                        let minute = p.hour! * 60 + p.minute!
+                        let lower = index == 0 ? 0 : planner.saved.starts[index - 1] + 45
+                        let upper = index == 11 ? 1394 : planner.saved.starts[index + 1] - 45
+                        planner.saved.starts[index] = min(upper, max(lower, minute)); planner.persist()
                     }), displayedComponents: .hourAndMinute)
                 }
             }
             Section("实时活动") {
                 Toggle("课程实时活动", isOn: $live)
                 if let message = activities.message { Text(message).font(.caption).foregroundStyle(.orange) }
-                Text("打开应用时为当天课程准备实时活动。系统权限、活动数量和后台限制可能影响展示；下课后再次进入应用会清理活动。").font(.caption).foregroundStyle(.secondary)
+                Text("打开应用后预约当天最近两堂课。课前15分钟启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可点活动中的“结束”，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
             }
             Section { Button("恢复已删除的课程") { planner.saved.hidden = []; planner.persist() } }
         }.navigationTitle("课表设置").navigationBarTitleDisplayMode(.inline)

@@ -11,6 +11,8 @@ import Combine
         syncing = true
         defer { syncing = false }
         let now = Date()
+        let historyKey = "lanke.live.requested." + account + "." + SchoolSchedule.dayKey(now)
+        var requested = Set(UserDefaults.standard.stringArray(forKey: historyKey) ?? [])
         // Keep the nearest two activities within the system's limited activity budget.
         let desired = enabled ? Array(lessons.filter { $0.end > now }.sorted { $0.start < $1.start }.prefix(2)) : []
         for activity in Activity<LessonActivity>.activities {
@@ -18,27 +20,32 @@ import Combine
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
-        guard enabled else { message = nil; return }
+        guard enabled else { UserDefaults.standard.removeObject(forKey: historyKey); message = nil; return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { message = "请在系统设置中允许览课使用实时活动。"; return }
         message = nil
         for lesson in desired {
-            let state = LessonActivity.ContentState(name: lesson.name, room: lesson.room, start: lesson.start, end: lesson.end)
+            let state = LessonActivity.ContentState(name: lesson.name, room: lesson.room, start: lesson.start, end: lesson.end, hasStarted: now >= lesson.start)
             let content = ActivityContent(state: state, staleDate: lesson.end)
             if let activity = Activity<LessonActivity>.activities.first(where: { $0.attributes.lessonID == lesson.id && $0.attributes.account == account }) {
                 if activity.content.state != state { await activity.update(content) }
                 continue
             }
             let attributes = LessonActivity(lessonID: lesson.id, account: account)
+            // Respect a person's decision to dismiss an activity; do not recreate it every tick.
+            guard !requested.contains(lesson.id) else { continue }
             do {
                 let notice = lesson.start.addingTimeInterval(-900)
                 if notice > now {
                     if #available(iOS 26.0, *) {
                         _ = try Activity.request(attributes: attributes, content: content, pushType: nil,
                             style: .standard, alertConfiguration: AlertConfiguration(title: "即将上课", body: "请查看课程和教室", sound: .default), start: notice)
+                        requested.insert(lesson.id)
                     }
                 } else {
                     _ = try Activity.request(attributes: attributes, content: content, pushType: nil)
+                    requested.insert(lesson.id)
                 }
+                UserDefaults.standard.set(Array(requested), forKey: historyKey)
             } catch { message = "实时活动暂未启动：\(error.localizedDescription)" }
         }
     }
