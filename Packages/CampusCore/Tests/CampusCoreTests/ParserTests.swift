@@ -16,6 +16,26 @@ final class ParserTests: XCTestCase {
         let fields = try HTMLParser.loginFields(fixture("login"))
         XCTAssertEqual(fields["RadioButtonList1"], "学生")
         XCTAssertEqual(fields["Button1"], "登录")
+        XCTAssertNil(fields["Button2"], "The reset button must never be submitted during login")
+    }
+    func testSchoolLoginSubmitsOnlyLoginButtonEvenWhenBothButtonsHaveEmptyValues() throws {
+        // Structure observed on the school's public default2.aspx login page.
+        let page = """
+        <form action="default2.aspx" method="post">
+        <input type="hidden" name="__VIEWSTATE" value="example-state">
+        <input type="radio" name="RadioButtonList1" value="学生" checked="checked">
+        <input type="submit" name="Button1" value="" class="btn_dl">
+        <input type="submit" name="Button2" value="" class="btn_cz">
+        </form>
+        """
+        let fields = try HTMLParser.loginFields(page)
+        XCTAssertEqual(fields["Button1"], "")
+        XCTAssertNil(fields["Button2"])
+        XCTAssertEqual(fields["RadioButtonList1"], "学生")
+        XCTAssertEqual(fields["__VIEWSTATE"], "example-state")
+        let body = String(decoding: try LegacyEncoding.form(fields), as: UTF8.self)
+        XCTAssertTrue(body.contains("Button1="))
+        XCTAssertFalse(body.contains("Button2="))
     }
     func testLoginPageIsNeverAcceptedAsAnEmptyGradeReport() throws {
         XCTAssertThrowsError(try HTMLParser.records(fixture("login"), page: "成绩")) {

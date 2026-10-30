@@ -120,7 +120,7 @@ public actor AcademicClient {
         loginParameters = nil
         let page = try await html(loginURL, fields: fields, referer: loginURL)
         guard let name = try HTMLParser.studentName(page) else {
-            throw CampusError.message(HTMLParser.alertMessage(page) ?? "登录未成功。请核对账号信息，或在教务原网页完成首次密码修改。")
+            throw CampusError.message(HTMLParser.alertMessage(page) ?? "未识别到登录成功页面，学校也未返回可识别的错误提示。这不能确定是密码错误；请在教务原网页核对登录结果。")
         }
         let student = Student(account: account, name: name)
         self.student = student

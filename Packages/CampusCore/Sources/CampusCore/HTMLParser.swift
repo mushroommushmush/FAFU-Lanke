@@ -17,7 +17,10 @@ public enum HTMLParser {
     public static func loginFields(_ html: String) throws -> [String: String] {
         var fields = try hiddenFields(html)
         let document = try SwiftSoup.parse(html)
-        for input in try document.select("input[type=submit], input[type=radio][checked]").array() {
+        // Only the clicked submit control belongs in a browser form submission.
+        // FAFU uses Button1 for login and Button2 for clearing/resetting the form.
+        // Sending both can run the reset handler and return the login page.
+        for input in try document.select("input[type=submit][name=Button1]:not([disabled]), input[type=radio][checked]:not([disabled])").array() {
             let name = try input.attr("name")
             if !name.isEmpty { fields[name] = try input.attr("value") }
         }
