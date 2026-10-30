@@ -1,0 +1,57 @@
+name: Build iOS app
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-manual-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Show build environment
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test parser and encoding
+        run: swift test --package-path Packages/CampusCore
+
+      - name: Build for iOS Simulator
+        run: >-
+          xcodebuild -project FAFUCampus.xcodeproj -scheme FAFUCampus
+          -configuration Debug -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath build/Simulator CODE_SIGNING_ALLOWED=NO build
+
+      - name: Archive unsigned iPhone app
+        run: >-
+          xcodebuild -project FAFUCampus.xcodeproj -scheme FAFUCampus
+          -configuration Release -sdk iphoneos -destination 'generic/platform=iOS'
+          -archivePath build/FAFUCampus.xcarchive
+          CODE_SIGNING_ALLOWED=NO archive
+
+      - name: Package IPA for signing on your Windows PC
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -R build/FAFUCampus.xcarchive/Products/Applications/FAFUCampus.app build/ipa/Payload/
+          cd build/ipa
+          /usr/bin/zip -qr ../FAFUCampus-unsigned.ipa Payload
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAFUCampus-unsigned-IPA
+          path: build/FAFUCampus-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
