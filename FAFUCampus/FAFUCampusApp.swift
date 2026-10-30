@@ -2,11 +2,16 @@ import SwiftUI
 
 @main @MainActor struct FAFUCampusApp: App {
     @StateObject private var store = CampusStore()
+    @StateObject private var planner = Planner()
+    @StateObject private var activities = LessonActivityManager()
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
             RootView()
+                .background { ActivityCoordinator() }
                 .environmentObject(store)
+                .environmentObject(planner)
+                .environmentObject(activities)
                 .tint(Palette.forest)
                 .task { await store.restoreOnLaunch() }
                 .onChange(of: scenePhase) { _, phase in

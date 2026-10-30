@@ -14,7 +14,7 @@ struct RootView: View {
             if store.mode == .login { LoginView() }
             else {
                 TabView {
-                    TimetableView().tabItem { Label("课表", systemImage: "calendar") }
+                    ScheduleHome().tabItem { Label("课表", systemImage: "calendar") }
                     RecordsView(feature: .grades).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
                     RecordsView(feature: .exams).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
                     AccountView().tabItem { Label("我的", systemImage: "person.crop.circle") }
@@ -96,8 +96,6 @@ struct StatusStrip: View {
     let date: Date?
     var body: some View {
         HStack(alignment: .top) {
-            Label(store.badge, systemImage: store.isOnline ? "checkmark.circle.fill" : "internaldrive")
-                .foregroundStyle(store.isOnline ? Palette.forest : .secondary)
             Spacer()
             if let date { Text("更新于 \(date.formatted(date: .abbreviated, time: .shortened))").multilineTextAlignment(.trailing) }
             else { Text("尚未获取") }
@@ -121,7 +119,6 @@ struct SemesterControls: View {
                     Button("查询") { query(Semester(year: year, term: term)) }
                         .disabled(disabled || year.isEmpty || term.isEmpty)
                 }.pickerStyle(.menu)
-                Text("当前显示：\(options.selected.title)").font(.caption).foregroundStyle(.secondary)
             }
             .task(id: options.selected.title) { year = options.selected.year; term = options.selected.term }
         }
@@ -137,76 +134,11 @@ struct EmptyPanel: View {
     }
 }
 
-struct TimetableView: View {
-    @EnvironmentObject var store: CampusStore
-    @State private var weekday = ((Calendar.current.component(.weekday, from: Date()) + 5) % 7) + 1
-    private let days = ["一", "二", "三", "四", "五", "六", "日"]
-    private var report: TimetableReport? { store.snapshot?.timetable }
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    StatusStrip(date: report?.fetchedAt)
-                    if store.needsLogin {
-                        Button("重新登录以更新数据") { Task { await store.returnToLogin() } }.disabled(store.busy)
-                    } else if store.hasSavedSession && !store.isOnline {
-                        Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
-                    }
-                    if let report {
-                        SemesterControls(options: report.options, disabled: !store.isOnline || store.busy) { semester in
-                            Task { await store.refresh(.timetable, semester: semester) }
-                        }
-                        Picker("星期", selection: $weekday) {
-                            ForEach(1...7, id: \.self) { day in
-                                Text(days[day - 1]).tag(day)
-                            }
-                        }.pickerStyle(.segmented)
-                        .accessibilityLabel("选择星期")
-                        Text("学期课表 · 请留意课程中的周次和单双周说明")
-                            .font(.caption).foregroundStyle(.secondary)
-                        let courses = report.courses.filter { $0.weekday == weekday }
-                        if courses.isEmpty {
-                            EmptyPanel(title: "这一天没有课表记录", detail: "请同时核对下方调停课说明。")
-                        }
-                        ForEach(courses) { course in
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(course.period).font(.caption.weight(.semibold)).foregroundStyle(Palette.forest)
-                                Text(course.content).font(.body).lineSpacing(6).textSelection(.enabled)
-                            }.frame(maxWidth: .infinity, alignment: .leading).padding(20)
-                                .background(.background, in: RoundedRectangle(cornerRadius: 18))
-                        }
-                        if !report.adjustments.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Label("调停课说明", systemImage: "arrow.triangle.swap").font(.headline)
-                                Text(report.adjustments).font(.callout).textSelection(.enabled)
-                                Text("请以这段学校原始说明为准；上方课程未自动合并调停课变化。")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }.padding(18).background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 18))
-                        }
-                    } else {
-                        EmptyPanel(title: "还没有课表", detail: "登录后点击右上角刷新，从教务系统获取课表。")
-                    }
-                }.padding(20)
-            }
-            .background(Palette.background).navigationTitle("我的课表")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await store.refresh(.timetable, semester: report?.options.selected) } }
-                    label: { Image(systemName: "arrow.clockwise") }
-                        .disabled(store.busy || !store.isOnline).accessibilityLabel("刷新课表")
-                }
-            }
-            .safeAreaInset(edge: .top) { if store.busy { ProgressView("正在查询学校数据…").font(.caption).padding(8).frame(maxWidth: .infinity).background(.regularMaterial) } }
-            .refreshable { await store.refresh(.timetable, semester: report?.options.selected) }
-            .onAppear { if store.mode == .demo { weekday = 1 } }
-        }
-    }
-}
-
 struct RecordsView: View {
     @EnvironmentObject var store: CampusStore
     let feature: CampusStore.Feature
-    @State private var search = ""
+    @State private var showSearch = false
+    private let search = ""
     @State private var year = "全部"
     @State private var term = "全部"
     private var report: RecordsReport? { feature == .grades ? store.snapshot?.grades : store.snapshot?.exams }
@@ -279,16 +211,17 @@ struct RecordsView: View {
                 }.padding(20)
             }
             .background(Palette.background).navigationTitle(feature == .grades ? "我的成绩" : "考试安排")
-            .searchable(text: $search, prompt: "搜索课程或其他信息")
+            .sheet(isPresented: $showSearch) { RecordsSearchView(records: filtered, title: feature.rawValue) }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
+                        .accessibilityLabel("搜索\(feature.rawValue)")
                     Button { Task { await store.refresh(feature, semester: feature == .exams ? report?.options.selected : nil) } }
                     label: { Image(systemName: "arrow.clockwise") }
                         .disabled(store.busy || !store.isOnline).accessibilityLabel("刷新\(feature.rawValue)")
                 }
             }
             .safeAreaInset(edge: .top) { if store.busy { ProgressView("正在查询学校数据…").font(.caption).padding(8).frame(maxWidth: .infinity).background(.regularMaterial) } }
-            .refreshable { await store.refresh(feature, semester: feature == .exams ? report?.options.selected : nil) }
         }
     }
 }
@@ -310,6 +243,7 @@ struct RecordDetailView: View {
 struct AccountView: View {
     @EnvironmentObject var store: CampusStore
     @State private var portal: PortalSheet?
+    @EnvironmentObject var planner: Planner
     @State private var confirmClear = false
     var body: some View {
         NavigationStack {
@@ -323,6 +257,7 @@ struct AccountView: View {
                     } icon: { Image(systemName: "person.crop.circle.fill").font(.largeTitle).foregroundStyle(Palette.forest) }
                     LabeledContent("当前状态", value: store.badge)
                 }
+                Section { NavigationLink("课表设置") { ScheduleSettings() } }
                 Section("查询与数据") {
                     Button("刷新全部数据") { Task { await store.refreshAll() } }.disabled(store.busy || !store.isOnline)
                     if store.hasSavedSession && !store.isOnline {
@@ -343,7 +278,7 @@ struct AccountView: View {
             .navigationTitle("我的")
             .sheet(item: $portal) { _ in SchoolPortalView() }
             .confirmationDialog("清除这台设备上保存的课表、成绩和考试记录？", isPresented: $confirmClear, titleVisibility: .visible) {
-                Button("清除并退出", role: .destructive) { Task { await store.clearAndSignOut() } }
+                Button("清除并退出", role: .destructive) { Task { planner.clear(); await store.clearAndSignOut() } }
                 Button("取消", role: .cancel) {}
             }
         }
@@ -384,5 +319,30 @@ struct AboutView: View {
         }
         .navigationTitle("关于览课")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct RecordsSearchView: View {
+    let records: [TableRecord]
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    private var results: [TableRecord] {
+        let keyword = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return records.filter { keyword.isEmpty || $0.fields.contains { $0.value.localizedCaseInsensitiveContains(keyword) } }
+    }
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(results) { record in
+                    NavigationLink(record.title) { RecordDetailView(record: record) }
+                }
+            }
+            .overlay { if results.isEmpty { ContentUnavailableView.search(text: query) } }
+            .navigationTitle("搜索" + title)
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索课程或其他信息")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+        }
     }
 }

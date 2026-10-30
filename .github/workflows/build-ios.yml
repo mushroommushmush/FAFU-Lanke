@@ -2,6 +2,15 @@ name: Build iOS app
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "FAFUCampus/**"
+      - "Packages/**"
+      - "Shared/**"
+      - "LankeActivityWidget/**"
+      - "FAFUCampus.xcodeproj/**"
+      - ".github/workflows/build-ios.yml"
 
 permissions:
   contents: read
@@ -66,3 +75,4 @@ jobs:
           path: build/FAFUCampus-unsigned.ipa
           if-no-files-found: error
           retention-days: 7
+
