@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import CampusCore
 
 /// Stores academic records only. Passwords, cookies and HTML are never serialized.
@@ -25,5 +26,48 @@ struct CacheStore {
     }
     func clear() throws {
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
+}
+
+/// One device-local Keychain item; never synchronized to iCloud.
+struct SessionVault {
+    private var key: [String: Any] { [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "app.personal.fafucampus.session",
+        kSecAttrAccount as String: "current-session"
+    ] }
+    func load() throws -> SavedSession? {
+        var query = key
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else { throw failure(status) }
+        let saved = try JSONDecoder().decode(SavedSession.self, from: data)
+        guard saved.isValid else { throw CampusError.invalidDestination }
+        return saved
+    }
+    func save(_ saved: SavedSession) throws {
+        guard saved.isValid else { throw CampusError.invalidDestination }
+        let data = try JSONEncoder().encode(saved)
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        let status = SecItemUpdate(key as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = key
+            for (name, value) in attributes { item[name] = value }
+            let added = SecItemAdd(item as CFDictionary, nil)
+            guard added == errSecSuccess else { throw failure(added) }
+        } else if status != errSecSuccess { throw failure(status) }
+    }
+    func clear() throws {
+        let status = SecItemDelete(key as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw failure(status) }
+    }
+    private func failure(_ status: OSStatus) -> CampusError {
+        .message("无法读写本机登录状态（钥匙串错误码：\(status)）。")
     }
 }

@@ -2,7 +2,7 @@
 
 原生 SwiftUI 应用，面向福建农林大学旧版教务系统。支持 iOS 17 及以上，包含登录、学期课表、成绩、考试安排、离线记录和学校原网页入口。
 
-**交付状态：源码初版。已完成本地结构检查；当前开发环境为 Windows，没有 Xcode，尚未编译运行或完成真实账号联调。项目内含 17 项核心测试和云端构建工作流，首次运行云端流程后才能确认编译及测试结果。压缩包不是可直接安装的 IPA。**
+**交付状态：0.1.0（构建 3）源码更新。旧版已由用户云端编译和安装；本次新增会话恢复、Liquid Glass 和图标，尚待云端构建及真机验收。包含 26 项核心测试。源码压缩包不是 IPA。**
 
 ## 你没有 Mac：这样使用
 
@@ -26,7 +26,7 @@ GitHub 公共仓库的标准托管 runner 可免费使用，私有仓库会消�
 
 ## 以后有 Mac 时
 
-使用 Xcode 16 或更新版本打开 `FAFUCampus.xcodeproj`，等待 Swift Package Manager 解析 SwiftSoup。选择 FAFUCampus scheme，可先运行 iOS 模拟器的示例模式。
+先在项目根目录运行 `swift Scripts/RenderIcon.swift` 生成同款叶子图标，再使用 Xcode 26 或更新版本打开 `FAFUCampus.xcodeproj`，等待 Swift Package Manager 解析 SwiftSoup。选择 FAFUCampus scheme，可先运行 iOS 模拟器的示例模式。
 
 连接真机后，在 Signing & Capabilities 中选择自己的 Team；如遇 Bundle ID 冲突，将 `app.personal.fafucampus` 改成你自己的唯一标识，然后运行。核心测试可在终端执行：
 
@@ -51,7 +51,7 @@ swift test --package-path Packages/CampusCore
 - 学校当前页面可能与 APK 发布时不同。首次真机登录是必要的联调步骤；成功编译不能证明所有学校接口当前可用。
 - 课表以“学期课表”展示，不推断当前教学周；调停课原始说明单独展示，尚未自动合并到课程。考试日期也保留学校原文，不猜测“待安排”的日期。
 - 本地解析页面结构异常时显示错误，不把错误页当成空课表覆盖缓存。
-- 会话过期要求重新登录和输入验证码，不保存密码进行自动重试。
+- 重启后自动验证并恢复会话；断网时显示离线数据并提供“恢复连接”。学校使会话过期时仍需重新输入验证码，不保存密码进行自动重试。主动返回登录会清除保存的会话。
 - App 本身不提供校园网穿透。若教务入口限制校园网，设备需要学校允许的网络或 VPN。
 - 未加入选课、评教、修改成绩、后台定时刷新或通知。
 
@@ -77,15 +77,27 @@ swift test --package-path Packages/CampusCore
 
 由于已确认的学校入口是 HTTP，Info.plist 仅为 `jwgl.fafu.edu.cn` 配置 ATS 例外，登录页也明确告知未加密传输。没有对所有域名关闭 ATS。参见 [Apple ATS 说明](https://developer.apple.com/documentation/security/preventing-insecure-network-connections)。
 
-应用不调用 iFAFU 的课表解析服务器。密码不会落盘，Cookie 仅存在于临时网络会话；缓存包含学号、姓名和教务记录，使用 iOS 完整文件保护，并排除 iCloud 备份。保留缓存时，能打开已解锁手机中本应用的人仍可查看缓存。清除本地数据可删除这些记录。
+应用不调用 iFAFU 的课表解析服务器。密码不会落盘，会话路径及 Cookie 保存在本机钥匙串（WhenUnlockedThisDeviceOnly，不同步到 iCloud）；缓存包含学号、姓名和教务记录，使用 iOS 完整文件保护，并排除 iCloud 备份。保留缓存时，能打开已解锁手机中本应用的人仍可查看缓存。清除本地数据可删除这些记录。
 
 ## 工程文件
 
 - `FAFUCampus.xcodeproj`：可直接打开的 Xcode 项目与共享 scheme。
 - `FAFUCampus/`：SwiftUI、临时网页视图、状态管理和缓存。
-- `Packages/CampusCore/`：核心逻辑、17 项 XCTest 测试和合成 HTML 测试页面。
+- `Packages/CampusCore/`：核心逻辑、26 项 XCTest 测试和合成 HTML 测试页面。
 - `.github/workflows/build-ios.yml`：手动云端测试、构建、生成未签名 IPA。
 - `TEST_PLAN.md`：真实设备验收步骤。
 - `BUILD_STATUS.md`：本次实际完成的检查及未完成项。
 
 这是个人学习工具，非福建农林大学官方应用。
+
+
+## 0.1.0 · 构建 3
+
+- 多任务切换保留正常界面快照，移除隐私遮罩。
+- 会话保存在设备钥匙串，启动时验证身份；不将缓存等同于已认证状态。
+- 登录页移除用户圈出的三段介绍；关于内容移到“我的 → 关于览课”，第一行为“版本 0.1.0”。
+- Xcode 26+ 构建启用系统 Liquid Glass 导航和标签栏；登录按钮采用 glassProminent，旧系统及减少透明度时回退。
+- AppIcon.icon 为分层图标。Scripts/RenderIcon.swift 在 Mac 构建前渲染与参考图相同的 leaf.fill 图样，并生成浅色、深色及着色后备图标。光照由系统生成，不在图片里绘制假玻璃。
+- 云端运行环境改为 macos-26，并检查 iOS SDK >= 26。更新时必须一并替换工作流及 Scripts 文件夹。
+
+参考：[Apple Liquid Glass](https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass)、[Icon Composer](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)。

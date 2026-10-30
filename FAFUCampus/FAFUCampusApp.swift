@@ -8,11 +8,9 @@ import SwiftUI
             RootView()
                 .environmentObject(store)
                 .tint(Palette.forest)
-                .overlay {
-                    if scenePhase != .active {
-                        Palette.background.ignoresSafeArea()
-                            .overlay(Image(systemName: "leaf.fill").font(.system(size: 56)).foregroundStyle(Palette.forest))
-                    }
+                .task { await store.restoreOnLaunch() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background { Task { await store.saveSessionOnBackground() } }
                 }
                 .alert("提示", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
                     Button("知道了") { store.message = nil }

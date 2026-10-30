@@ -13,10 +13,10 @@
 - Local Swift package path exists
 - Workflow YAML parses and uses macOS runner
 - Cloud build only runs on explicit manual request
-- 17 core test cases present
-- Test fixture exists: timetable
+- 26 core test cases present
 - Test fixture exists: grades
 - Test fixture exists: login
+- Test fixture exists: timetable
 - Test fixture exists: exams
 - No app-server endpoint outside the domain-rejection test
 - No password/form diagnostic logging
@@ -24,12 +24,12 @@
 - Array return type correction present
 - App icon is opaque 1024 x 1024 RGB
 
-## 尚未完成
+## 本次更新仍需验证
 
-- Swift 编译和 XCTest 执行：本机没有 Swift / Xcode / iOS SDK。17 项测试已写入工程，尚未在此环境运行。
-- iOS 模拟器与真机视觉检查：尚未运行。
-- GitHub 云端构建：配置已写好，尚未上传到用户仓库或触发执行。
-- Apple 签名和 iPhone 安装：尚未执行，需用户自己的账号和设备。
-- 真实教务账号登录与页面兼容性：尚未验证。
+- 本机为 Windows，无 Swift/Xcode/iOS SDK；26 项 XCTest 尚未在本机执行。
+- 旧版云端构建及用户安装已成功；用户最新截图显示已登录并有课表。
+- 本次会话恢复、钥匙串、Liquid Glass 与分层图标尚未进行云端编译或真机验收。
+- 图标的精确 leaf.fill 图样及后备 PNG 由云端 Scripts/RenderIcon.swift 生成；本地未运行 AppKit 渲染器。
+- AppIcon.icon 的结构和资源引用已检查，仍需 Xcode 26+ 的资产编译器验证。
 
-结构检查不等于编译通过，也不能证明学校目前仍使用相同页面。请先执行云端工作流；只有所有步骤成功后才会上传未签名 IPA。
+结构检查不等于 Swift 编译或功能测试通过。请更新整个补丁（包括工作流），重新构建并覆盖安装后按 TEST_PLAN.md 验收。

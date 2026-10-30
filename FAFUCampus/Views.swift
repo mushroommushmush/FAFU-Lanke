@@ -37,9 +37,6 @@ struct LoginView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Image(systemName: "leaf.fill").font(.system(size: 42)).foregroundStyle(Palette.forest)
                         Text("览课").font(.system(size: 36, weight: .bold, design: .rounded))
-                        Text("课表、成绩与考试，随手可查。")
-                            .foregroundStyle(.secondary)
-                        Text("福建农林大学 · 个人学习工具").font(.caption).foregroundStyle(.secondary)
                     }.padding(.top, 28)
                     VStack(spacing: 18) {
                         TextField("学号", text: $account).textContentType(.username).keyboardType(.asciiCapable)
@@ -73,9 +70,9 @@ struct LoginView: View {
                         } label: {
                             HStack { if store.busy { ProgressView().tint(.white) }; Text(store.busy ? "正在连接…" : "登录教务系统").fontWeight(.semibold) }
                                 .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        }.buttonStyle(.borderedProminent).controlSize(.large)
+                        }.modifier(LankePrimaryButton()).controlSize(.large)
                             .disabled(store.busy || account.isEmpty || password.isEmpty || captcha.isEmpty || store.captchaImage == nil)
-                        Text("学校入口使用 HTTP，登录信息会通过未加密连接传输。密码仅用于本次登录，不保存到本机。")
+                        Text("学校入口使用 HTTP，登录信息会通过未加密连接传输。密码不保存；登录会话保存在本机钥匙串，用于下次自动恢复。")
                             .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let cached = store.cachedStudent {
@@ -86,8 +83,6 @@ struct LoginView: View {
                         Spacer()
                         Button("教务原网页") { portal = .portal }
                     }.font(.callout)
-                    Text("独立开发的个人工具，非学校官方应用。首次使用需要登录你自己的教务账号。")
-                        .font(.caption).foregroundStyle(.secondary)
                 }.padding(24).disabled(store.busy)
             }
             .background(Palette.background)
@@ -154,21 +149,19 @@ struct TimetableView: View {
                     StatusStrip(date: report?.fetchedAt)
                     if store.needsLogin {
                         Button("重新登录以更新数据") { Task { await store.returnToLogin() } }.disabled(store.busy)
+                    } else if store.hasSavedSession && !store.isOnline {
+                        Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
                     }
                     if let report {
                         SemesterControls(options: report.options, disabled: !store.isOnline || store.busy) { semester in
                             Task { await store.refresh(.timetable, semester: semester) }
                         }
-                        HStack(spacing: 6) {
+                        Picker("星期", selection: $weekday) {
                             ForEach(1...7, id: \.self) { day in
-                                Button { weekday = day } label: {
-                                    Text(days[day - 1]).font(.callout.weight(.semibold))
-                                        .frame(maxWidth: .infinity).frame(minHeight: 44)
-                                        .background(weekday == day ? Palette.forest : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
-                                        .foregroundStyle(weekday == day ? .white : .primary)
-                                }.accessibilityLabel("星期\(days[day - 1])")
+                                Text(days[day - 1]).tag(day)
                             }
-                        }
+                        }.pickerStyle(.segmented)
+                        .accessibilityLabel("选择星期")
                         Text("学期课表 · 请留意课程中的周次和单双周说明")
                             .font(.caption).foregroundStyle(.secondary)
                         let courses = report.courses.filter { $0.weekday == weekday }
@@ -234,6 +227,8 @@ struct RecordsView: View {
                     StatusStrip(date: report?.fetchedAt)
                     if store.needsLogin {
                         Button("重新登录以更新数据") { Task { await store.returnToLogin() } }.disabled(store.busy)
+                    } else if store.hasSavedSession && !store.isOnline {
+                        Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
                     }
                     if feature == .exams, let report {
                         SemesterControls(options: report.options, disabled: !store.isOnline || store.busy) { semester in
@@ -330,18 +325,20 @@ struct AccountView: View {
                 }
                 Section("查询与数据") {
                     Button("刷新全部数据") { Task { await store.refreshAll() } }.disabled(store.busy || !store.isOnline)
+                    if store.hasSavedSession && !store.isOnline {
+                        Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
+                    }
                     Button("教务原网页") { portal = .portal }
                     Button(store.mode == .demo ? "退出示例，登录学校账号" : "返回登录（保留离线数据）") {
                         Task { await store.returnToLogin() }
                     }.disabled(store.busy)
                     Button("清除本地数据并退出", role: .destructive) { confirmClear = true }.disabled(store.busy)
                 }
-                Section("关于览课") {
-                    Text("个人学习工具 · 0.1.0").font(.callout)
-                    Text("非学校官方应用。数据来自你登录后的教务网页；课表、成绩与考试安排在本机解析。")
-                    Text("学校入口使用 HTTP。密码不保存；会话仅保存在运行期间。已下载的记录保存在本机，不包含密码或网页原文。")
-                    Text("课表按学期展示，单双周与调停课请以学校原始说明为准。")
-                }.font(.footnote)
+                Section {
+                    NavigationLink { AboutView() } label: {
+                        Label("关于览课", systemImage: "info.circle")
+                    }
+                }
             }
             .navigationTitle("我的")
             .sheet(item: $portal) { _ in SchoolPortalView() }
@@ -350,5 +347,42 @@ struct AccountView: View {
                 Button("取消", role: .cancel) {}
             }
         }
+    }
+}
+
+private struct LankePrimaryButton: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency {
+            content.buttonStyle(.glassProminent)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+struct AboutView: View {
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+    }
+    var body: some View {
+        List {
+            Section {
+                Text("版本 \(version)")
+            }
+            Section("关于应用") {
+                Text("非学校官方应用。数据来自你登录后的教务网页；课表、成绩与考试安排在本机解析。")
+            }
+            Section("登录与数据") {
+                Text("登录会话保存在本机钥匙串。关闭应用后会自动恢复并向学校验证；会话失效时需要重新输入验证码登录。密码不保存。")
+                Text("学校入口使用 HTTP。已下载的记录保存在本机，不包含密码或网页原文。退出登录会移除已保存的会话。")
+                Text("多任务界面正常显示当前页面。")
+            }
+            Section("课表说明") {
+                Text("课表按学期展示，单双周与调停课请以学校原始说明为准。数据通过手动刷新更新，不提供后台实时推送。")
+            }
+        }
+        .navigationTitle("关于览课")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

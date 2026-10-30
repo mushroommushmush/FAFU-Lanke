@@ -23,7 +23,10 @@ public actor AcademicClient {
     private var loginParameters: [String: String]?
     private var student: Student?
 
-    public init() {}
+    private let configuration: URLSessionConfiguration
+    public init(configuration: URLSessionConfiguration = .ephemeral) {
+        self.configuration = configuration
+    }
     public nonisolated static func isAllowed(_ url: URL?) -> Bool {
         guard let url else { return false }
         return url.host?.lowercased() == host && ["http", "https"].contains(url.scheme?.lowercased() ?? "")
@@ -31,17 +34,46 @@ public actor AcademicClient {
     }
     private func freshSession() {
         session?.invalidateAndCancel()
-        let configuration = URLSessionConfiguration.ephemeral
+        let configuration = self.configuration.copy() as! URLSessionConfiguration
         configuration.timeoutIntervalForRequest = 25
         configuration.timeoutIntervalForResource = 45
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
         configuration.httpShouldSetCookies = true
+        for cookie in configuration.httpCookieStorage?.cookies ?? [] {
+            configuration.httpCookieStorage?.deleteCookie(cookie)
+        }
         session = URLSession(configuration: configuration, delegate: redirectDelegate, delegateQueue: nil)
         let alphabet = Array("abcdefghijklmnopqrstuvwxyz12345")
         let token = String((0..<24).map { _ in alphabet.randomElement()! })
         baseURL = URL(string: "http://\(Self.host)/(\(token))/")
         loginURL = nil; loginParameters = nil; student = nil
+    }
+    public func savedSession() -> SavedSession? {
+        guard let baseURL, let student else { return nil }
+        let cookies = (session?.configuration.httpCookieStorage?.cookies ?? [])
+            .filter { $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")).lowercased() == Self.host }
+            .map(SessionCookie.init)
+        return SavedSession(baseURL: baseURL, student: student, cookies: cookies)
+    }
+    public func restore(_ saved: SavedSession) throws {
+        guard saved.isValid else { throw CampusError.invalidDestination }
+        freshSession()
+        baseURL = saved.baseURL
+        student = saved.student
+        for cookie in saved.cookies.compactMap({ $0.httpCookie }) {
+            session?.configuration.httpCookieStorage?.setCookie(cookie)
+        }
+    }
+    public func validateSession() async throws -> Student {
+        guard let expected = student else { throw CampusError.sessionExpired }
+        let url = try pageURL("xs_main.aspx")
+        let page = try await html(url, referer: url)
+        try HTMLParser.requireAuthenticated(page)
+        guard let name = try HTMLParser.studentName(page), name == expected.name else {
+            throw CampusError.sessionExpired
+        }
+        return expected
     }
     public func signOut() {
         session?.invalidateAndCancel(); session = nil

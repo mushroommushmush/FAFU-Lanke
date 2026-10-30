@@ -16,9 +16,61 @@ import CampusCore
     private let client = AcademicClient()
     private let cache = CacheStore()
 
-    init() { cachedStudent = cache.load()?.student }
+    private let vault = SessionVault()
+    private var didRestore = false
+    @Published var restoring = false
+    @Published var hasSavedSession = false
+
+    init() {
+        let cached = cache.load()
+        cachedStudent = cached?.student
+        if let saved = try? vault.load() {
+            hasSavedSession = true; restoring = true
+            snapshot = cached?.student.account == saved.student.account ? cached : CampusSnapshot(student: saved.student)
+            mode = .offline
+        }
+    }
+    func restoreOnLaunch() async {
+        guard !didRestore else { return }
+        didRestore = true
+        await restoreConnection()
+    }
+    func restoreConnection() async {
+        guard !busy else { return }
+        busy = true; restoring = true
+        defer { busy = false; restoring = false }
+        do {
+            guard let saved = try vault.load() else { return }
+            hasSavedSession = true
+            try await client.restore(saved)
+            _ = try await client.validateSession()
+            if snapshot?.student.account != saved.student.account { snapshot = CampusSnapshot(student: saved.student) }
+            mode = .online; needsLogin = false
+            do { try await saveSession() }
+            catch { message = "登录已恢复，但保存会话失败：\(friendly(error))" }
+        } catch {
+            mode = snapshot == nil ? .login : .offline
+            if (error as? CampusError) == .sessionExpired || (error as? CampusError) == .invalidDestination {
+                needsLogin = true
+                do { try vault.clear(); hasSavedSession = false }
+                catch { message = friendly(error) }
+                if message == nil { message = "学校登录已失效，请重新登录。已下载的数据仍可查看。" }
+            } else {
+                message = "暂时无法恢复连接：\(friendly(error))"
+            }
+        }
+    }
+    private func saveSession() async throws {
+        if let saved = await client.savedSession() {
+            try vault.save(saved); hasSavedSession = true
+        }
+    }
+    func saveSessionOnBackground() async {
+        guard mode == .online, !needsLogin, !busy else { return }
+        do { try await saveSession() } catch { message = friendly(error) }
+    }
     var isOnline: Bool { mode == .online && !needsLogin }
-    var badge: String { mode == .demo ? "示例数据" : (isOnline ? "已登录" : "离线查看") }
+    var badge: String { restoring ? "正在恢复登录…" : (mode == .demo ? "示例数据" : (isOnline ? "已登录" : "离线查看")) }
 
     func refreshCaptcha() async {
         guard !busy else { return }
@@ -46,6 +98,8 @@ import CampusCore
             }
             mode = .online; needsLogin = false; captchaImage = nil; cachedStudent = student
             persist()
+            do { try await saveSession() }
+            catch { message = "已登录，但未能保存登录状态：\(friendly(error))" }
             busy = false
             await refreshAll()
         } catch {
@@ -67,6 +121,7 @@ import CampusCore
         defer { busy = false }
         do {
             try await fetch(feature, semester: semester)
+            try await saveSession()
             persist()
         } catch {
             if (error as? CampusError) == .sessionExpired { needsLogin = true }
@@ -86,7 +141,10 @@ import CampusCore
                 failures.append("\(feature.rawValue)：\(friendly(error))")
             }
         }
-        do { if let snapshot { try cache.save(snapshot) } }
+        do {
+            if !needsLogin { try await saveSession() }
+            if let snapshot { try cache.save(snapshot) }
+        }
         catch { failures.append("保存到本机失败：\(error.localizedDescription)") }
         if !failures.isEmpty {
             message = "登录已完成，但部分数据未能获取：\n" + failures.joined(separator: "\n")
@@ -102,6 +160,8 @@ import CampusCore
     }
     func returnToLogin() async {
         guard !busy else { return }
+        do { try vault.clear() } catch { message = friendly(error); return }
+        hasSavedSession = false
         await client.signOut()
         snapshot = nil; mode = .login; captchaImage = nil; needsLogin = false
         cachedStudent = cache.load()?.student
