@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,15 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+
+      - name: Require iOS 26 SDK and generate leaf icon
+        run: |
+          SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+          if [ "${SDK_VERSION%%.*}" -lt 26 ]; then
+            echo "Xcode 26 or newer is required for Liquid Glass"
+            exit 1
+          fi
+          swift Scripts/RenderIcon.swift
 
       - name: Test parser and encoding
         run: swift test --package-path Packages/CampusCore
