@@ -268,6 +268,7 @@ struct RecordDetailView: View {
 
 struct AccountView: View {
     @EnvironmentObject var store: CampusStore
+    @EnvironmentObject var widgetPublisher: HomeWidgetPublisher
     @State private var portal: PortalSheet?
     @EnvironmentObject var planner: Planner
     @State private var confirmClear = false
@@ -284,6 +285,11 @@ struct AccountView: View {
                     LabeledContent("当前状态", value: store.badge)
                 }
                 Section { NavigationLink("课表设置") { ScheduleSettings() } }
+                Section("主屏幕小组件") {
+                    Text(widgetPublisher.status).font(.footnote)
+                    Button("同步小组件") { widgetPublisher.publish(store: store, planner: planner) }
+                    Text("长按主屏幕空白处，添加“览课”的今日课表与下一节课。更新由系统调度，签名需保留共享钥匙串权限。").font(.caption).foregroundStyle(.secondary)
+                }
                 Section("查询与数据") {
                     Button("刷新全部数据") { Task { await store.refreshAll() } }.disabled(store.busy || !store.isOnline)
                     if store.hasSavedSession && !store.isOnline {

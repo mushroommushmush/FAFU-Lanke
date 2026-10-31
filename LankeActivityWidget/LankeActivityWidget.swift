@@ -83,5 +83,5 @@ struct LessonLiveWidget: Widget {
 }
 
 @main struct LankeWidgets: WidgetBundle {
-    var body: some Widget { LessonLiveWidget() }
+    var body: some Widget { LessonLiveWidget(); HomeCoursesWidget() }
 }
