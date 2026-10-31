@@ -30,7 +30,7 @@ public enum SchoolSchedule {
         for line in lines.reversed() {
             // Course-change identifiers such as (换0420) are not room names.
             let cleaned = line.replacingOccurrences(of: "[（(]换[^）)]*[）)]", with: "", options: .regularExpression)
-            let rooms = matches("(?<![\\p{Han}0-9])([\\p{Han}]\\s*[0-9]+(?:[-－][0-9]+)?)", cleaned)
+            let rooms = matches("(?<![\\p{Han}0-9])([\\p{Han}]\\s*[A-Za-z]?\\s*[0-9]+(?:[-－][0-9]+)?)", cleaned)
             if let room = rooms.map({ $0[1] }).first(where: { !["换", "第", "周", "节"].contains(String($0.prefix(1))) }) {
                 return room.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
             }

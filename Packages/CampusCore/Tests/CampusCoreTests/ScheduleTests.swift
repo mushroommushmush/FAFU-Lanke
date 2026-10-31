@@ -8,6 +8,11 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "桃1-137"]), "桃1-137")
         XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "(换0420)"]), "")
     }
+    func testLetteredClassrooms() {
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "诚A601", "(换0420)"]), "诚A601")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "诚 B 402"]), "诚B402")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "创211"]), "创211")
+    }
     func testRelativeUpdateAge() {
         let now = Date(timeIntervalSince1970: 2_000_000_000)
         XCTAssertEqual(SchoolSchedule.updateAge(now.addingTimeInterval(-120), now: now), "更新于2分钟前")

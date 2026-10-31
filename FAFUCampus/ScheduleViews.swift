@@ -73,7 +73,7 @@ struct ScheduleHome: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: grid ? 10 : 18) {
                     StatusStrip(date: report?.fetchedAt)
                     if store.needsLogin { Button("重新登录以更新数据") { Task { await store.returnToLogin() } } }
                     if let report {
@@ -134,7 +134,7 @@ struct ScheduleHome: View {
                             }
                         }
                     }
-                }.padding(16)
+                }.padding(grid ? 12 : 16).padding(.bottom, grid ? 16 : 0)
             }
             .background(Palette.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -158,41 +158,62 @@ struct ScheduleHome: View {
         if today != lastToday { lastToday = today; day = SchoolSchedule.calendar.startOfDay(for: Date()) }
     }
     private func moveWeek(_ amount: Int) { day = SchoolSchedule.calendar.date(byAdding: .day, value: amount * 7, to: day)! }
+    private let gridRowHeight: CGFloat = 52
     private var weekGrid: some View {
-        ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: 3) {
+        GeometryReader { geometry in
+            let gap: CGFloat = 2
+            let timeWidth: CGFloat = 34
+            let dayWidth = max(1, (geometry.size.width - timeWidth - gap * 7) / 7)
+            HStack(alignment: .top, spacing: gap) {
                 VStack(spacing: 0) {
-                    Text("时间").frame(height: 40)
+                    Text("时间").font(.system(size: 10)).frame(height: 34)
                     ForEach(0..<12, id: \.self) { index in
-                        VStack { Text("\(index + 1)"); Text(String(format: "%02d:%02d", planner.saved.starts[index]/60, planner.saved.starts[index]%60)).font(.caption2) }.frame(height: 80)
+                        VStack(spacing: 3) {
+                            Text("\(index + 1)").font(.system(size: 12, weight: .medium))
+                            Text(String(format: "%02d:%02d", planner.saved.starts[index]/60, planner.saved.starts[index]%60)).font(.system(size: 9)).monospacedDigit()
+                        }.frame(height: gridRowHeight)
                     }
-                }.frame(width: 42)
+                }.frame(width: timeWidth)
                 ForEach(0..<7, id: \.self) { index in
                     let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
                     let courses = planner.lessons(report, on: date).filter { fitsGrid($0) }
                     let layout = lanes(for: courses)
                     VStack(spacing: 0) {
-                        Text("周\(weekdays[index]) \(SchoolSchedule.calendar.component(.day, from: date))").font(.caption).frame(height: 40)
+                        VStack(spacing: 2) {
+                            Text(weekdays[index]).font(.system(size: 11, weight: .semibold))
+                            Text("\(SchoolSchedule.calendar.component(.day, from: date))").font(.system(size: 9))
+                        }.frame(width: dayWidth, height: 34)
+                            .background(SchoolSchedule.calendar.isDateInToday(date) ? Palette.forest.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
                         ZStack(alignment: .topLeading) {
-                            VStack(spacing: 0) { ForEach(0..<12, id: \.self) { _ in Rectangle().fill(Color.secondary.opacity(0.06)).frame(height: 79).padding(.bottom, 1) } }
-                            ForEach(courses) { lesson in
-                                TimelineView(.periodic(from: .now, by: 15)) { context in
-                                    Button { selected = lesson } label: {
-                                        VStack(spacing: 3) {
-                                            Text(lesson.name).font(.caption.weight(.semibold))
-                                            Text("@" + (lesson.room.isEmpty ? "待确认" : lesson.room)).font(.caption2)
-                                        }.foregroundStyle(.black).padding(4).frame(width: 88 / CGFloat(layout.count), height: max(52, position(lesson.end, end: true) - position(lesson.start)))
-                                            .background(LessonColors.course(lesson.name), in: RoundedRectangle(cornerRadius: 9))
-                                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, lineWidth: 4))
-                                            .shadow(color: lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, radius: 8)
-                                    }.buttonStyle(.plain).offset(x: CGFloat(layout.indices[lesson.id] ?? 0) * 88 / CGFloat(layout.count), y: position(lesson.start))
+                            VStack(spacing: 0) {
+                                ForEach(0..<12, id: \.self) { _ in
+                                    Rectangle().fill(Color.secondary.opacity(0.06)).frame(height: gridRowHeight - 1).padding(.bottom, 1)
                                 }
                             }
-                        }.frame(width: 88, height: 960)
-                    }
+                            ForEach(courses) { lesson in
+                                TimelineView(.periodic(from: .now, by: 15)) { context in
+                                    let cardWidth = dayWidth / CGFloat(layout.count)
+                                    let cardHeight = max(32, position(lesson.end, end: true) - position(lesson.start) - 1)
+                                    Button { selected = lesson } label: {
+                                        VStack(spacing: 3) {
+                                            Text(lesson.name).font(.system(size: 10, weight: .medium)).lineLimit(4)
+                                            Text("@" + (lesson.room.isEmpty ? "待确认" : lesson.room)).font(.system(size: 9)).lineLimit(2)
+                                        }.foregroundStyle(.black).multilineTextAlignment(.center)
+                                            .padding(.horizontal, 2).padding(.vertical, 4)
+                                            .frame(width: cardWidth, height: cardHeight).clipped()
+                                            .background(LessonColors.course(lesson.name), in: RoundedRectangle(cornerRadius: 6))
+                                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, lineWidth: 2))
+                                            .shadow(color: lesson.phase(at: context.date) == .soon ? LessonColors.soon.opacity(0.8) : .clear, radius: 3)
+                                    }.buttonStyle(.plain)
+                                        .accessibilityLabel(lesson.name + "，教室" + lesson.room)
+                                        .offset(x: CGFloat(layout.indices[lesson.id] ?? 0) * cardWidth, y: position(lesson.start))
+                                }
+                            }
+                        }.frame(width: dayWidth, height: gridRowHeight * 12)
+                    }.frame(width: dayWidth)
                 }
-            }
-        }
+            }.frame(width: geometry.size.width, alignment: .leading)
+        }.frame(height: 34 + gridRowHeight * 12)
     }
     private func fitsGrid(_ lesson: Lesson) -> Bool {
         let cal = SchoolSchedule.calendar
@@ -217,9 +238,9 @@ struct ScheduleHome: View {
         let minute = Double(parts.hour! * 60 + parts.minute!)
         let times = planner.saved.starts.map(Double.init)
         for index in 0..<12 {
-            if minute <= times[index] + 45 { return CGFloat(Double(index) * 80 + max(0, (minute - times[index]) / 45 * 80)) }
+            if minute <= times[index] + 45 { return CGFloat(Double(index) * Double(gridRowHeight) + max(0, (minute - times[index]) / 45 * Double(gridRowHeight))) }
         }
-        return 960
+        return gridRowHeight * 12
     }
 }
 
