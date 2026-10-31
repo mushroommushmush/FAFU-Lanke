@@ -5,16 +5,21 @@ import time
 
 out = pathlib.Path('build/layout-preview')
 out.mkdir(parents=True, exist_ok=True)
-devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
-candidates = [d for runtime, rows in devices.items() if 'iOS-26' in runtime for d in rows if d.get('isAvailable')]
+runtimes = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'runtimes', '-j']))['runtimes']
+runtimes = [r for r in runtimes if r.get('isAvailable') and 'iOS-26' in r['identifier']]
+runtimes.sort(key=lambda r: tuple(int(n) for n in r['version'].split('.')), reverse=True)
+types = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devicetypes', '-j']))['devicetypes']
+phones = [t for t in types if t['name'].startswith('iPhone')]
+phones.sort(key=lambda t: ('Air' not in t['name'], t['name']))
 chosen = []
-for family in ['iPhone']:
-    rows = [d for d in candidates if d['name'].startswith(family)]
-    rows.sort(key=lambda d: ('Air' not in d['name'], d['name']))
-    if rows:
-        chosen.append(rows[0])
-if not chosen:
-    (out / 'NOT_CAPTURED.txt').write_text('No available iOS 26 simulator runtime; device visual validation is pending.')
+if runtimes and phones:
+    runtime, device_type = runtimes[0], phones[0]
+    udid = subprocess.check_output(['xcrun', 'simctl', 'create', 'Lanke Fresh Layout', device_type['identifier'], runtime['identifier']], text=True).strip()
+    chosen = [{'name': device_type['name'], 'udid': udid}]
+    (out / 'DEVICE.txt').write_text('Fresh device: ' + udid + '\nRuntime: ' + runtime['identifier'])
+    subprocess.run(['open', '-a', 'Simulator', '--args', '-CurrentDeviceUDID', udid], check=False)
+else:
+    (out / 'NOT_CAPTURED.txt').write_text('No available iOS 26 simulator runtime; visual validation is pending.')
 for d in chosen:
     udid = d['udid']
     def run(*args, timeout=180):
