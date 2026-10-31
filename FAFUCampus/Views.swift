@@ -12,21 +12,34 @@ enum Palette {
 
 struct RootView: View {
     @EnvironmentObject var store: CampusStore
-    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("--preview-exams") ? 2 : 0
+    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("--preview-search") ? 4 : (ProcessInfo.processInfo.arguments.contains("--preview-exams") ? 2 : 0)
+    @State private var searchText = ""
     var body: some View {
         Group {
             if store.mode == .login { LoginView() }
-            else {
-                Group {
-                    switch selectedTab {
-                    case 1: RecordsView(feature: .grades).id("grades")
-                    case 2: RecordsView(feature: .exams).id("exams")
-                    case 3: AccountView()
-                    default: ScheduleHome()
+            else if #available(iOS 26.0, *) {
+                TabView(selection: $selectedTab) {
+                    Tab("课表", systemImage: "calendar", value: 0) { ScheduleHome() }
+                    Tab("成绩", systemImage: "chart.bar.xaxis", value: 1) { RecordsView(feature: .grades) }
+                    Tab("考试", systemImage: "pencil.and.list.clipboard", value: 2) { RecordsView(feature: .exams) }
+                    Tab("我的", systemImage: "person.crop.circle", value: 3) { AccountView() }
+                    Tab("搜索", systemImage: "magnifyingglass", value: 4, role: .search) {
+                        UniversalSearchView(query: $searchText)
                     }
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) { SeparatedTabBar(selection: $selectedTab) }
+                .searchable(text: $searchText, prompt: "搜索功能、课程和信息")
+                .tabViewSearchActivation(.searchTabSelection)
+                .tabBarMinimizeBehavior(.onScrollDown)
                 .onOpenURL { url in if url.scheme == "lanke", url.host == "timetable" { selectedTab = 0 } }
+            } else {
+                TabView(selection: $selectedTab) {
+                    ScheduleHome().tag(0).tabItem { Label("课表", systemImage: "calendar") }
+                    RecordsView(feature: .grades).tag(1).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
+                    RecordsView(feature: .exams).tag(2).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
+                    AccountView().tag(3).tabItem { Label("我的", systemImage: "person.crop.circle") }
+                    UniversalSearchView(query: $searchText).searchable(text: $searchText, prompt: "搜索功能、课程和信息")
+                        .tag(4).tabItem { Label("搜索", systemImage: "magnifyingglass") }
+                }
             }
         }
     }
@@ -391,34 +404,6 @@ struct RecordsSearchView: View {
     }
 }
 
-struct SeparatedTabBar: View {
-    @Binding var selection: Int
-    private let icons = ["calendar", "chart.bar.xaxis", "pencil.and.list.clipboard", "person.crop.circle"]
-    private let labels = ["课表", "成绩", "考试", "我的"]
-    private func item(_ index: Int) -> some View {
-        Button { selection = index } label: {
-            VStack(spacing: 3) {
-                Image(systemName: icons[index]).font(.system(size: 23, weight: .semibold))
-                Text(labels[index]).font(.caption2)
-            }.foregroundStyle(selection == index ? Palette.forest : Color.primary)
-                .frame(maxWidth: .infinity).frame(height: 56)
-                .background(selection == index ? Color.primary.opacity(0.09) : .clear, in: Capsule())
-                .contentShape(Capsule())
-        }.buttonStyle(.plain).accessibilityAddTraits(selection == index ? .isSelected : [])
-    }
-    var body: some View {
-        HStack(spacing: 12) {
-            HStack(spacing: 3) { ForEach(0..<3) { item($0) } }.padding(5).modifier(TabBarGlass())
-            item(3).frame(width: 66).padding(5).modifier(TabBarGlass())
-        }.padding(.horizontal, 18).padding(.top, 6).padding(.bottom, 4)
-    }
-}
-private struct TabBarGlass: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) { content.glassEffect(.regular.interactive(), in: Capsule()) }
-        else { content.background(.regularMaterial, in: Capsule()) }
-    }
-}
 struct ElectiveCreditsView: View {
     @EnvironmentObject var store: CampusStore
     var body: some View {
@@ -440,5 +425,73 @@ struct ElectiveCreditsView: View {
             .overlay { if store.busy { ProgressView() } }
             .toolbar { Button { Task { await store.refreshElectives() } } label: { Image(systemName: "arrow.clockwise") }.disabled(store.busy || !store.isOnline) }
             .task { if store.snapshot?.electives == nil { await store.refreshElectives() } }
+    }
+}
+
+struct UniversalSearchView: View {
+    @Binding var query: String
+    @EnvironmentObject private var store: CampusStore
+    @EnvironmentObject private var planner: Planner
+    @State private var showPortal = false
+    @State private var addingLesson = false
+    private var results: [AppSearchEntry] {
+        AppSearchIndex.entries(snapshot: store.snapshot, manual: planner.saved.manual, hidden: planner.saved.hidden)
+            .filter { $0.matches(query) }
+    }
+    private var hasQuery: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var body: some View {
+        NavigationStack {
+            List {
+                if !hasQuery {
+                    Section {
+                        Text("搜索应用功能、已下载的课表、成绩、考试、选修学分与手动课程。未下载的信息请先在对应页面查询。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(["功能", "个人信息", "课表", "手动课程", "成绩", "考试", "选修学分", "调停课说明"], id: \.self) { category in
+                    let items = results.filter { $0.category == category && (hasQuery || category == "功能") }
+                    if !items.isEmpty {
+                        Section(category) {
+                            ForEach(items) { item in
+                                if item.route == "portal" {
+                                    Button { showPortal = true } label: { resultLabel(item) }
+                                } else if item.route == "add" {
+                                    Button { addingLesson = true } label: { resultLabel(item) }
+                                } else {
+                                    NavigationLink { destination(item) } label: { resultLabel(item) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .overlay { if hasQuery && results.isEmpty { ContentUnavailableView.search(text: query) } }
+            .navigationTitle("搜索")
+            .sheet(isPresented: $showPortal) { SchoolPortalView() }
+            .sheet(isPresented: $addingLesson) { AddLessonView(day: .now) }
+            .task(id: store.snapshot?.student.account) { planner.load(account: store.snapshot?.student.account ?? "") }
+        }
+    }
+    private func resultLabel(_ item: AppSearchEntry) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(item.title).foregroundStyle(.primary)
+            if !item.subtitle.isEmpty { Text(item.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+        }.padding(.vertical, 3)
+    }
+    @ViewBuilder private func destination(_ item: AppSearchEntry) -> some View {
+        switch item.route {
+        case "schedule": ScheduleHome()
+        case "grades": RecordsView(feature: .grades)
+        case "exams": RecordsView(feature: .exams)
+        case "settings": ScheduleSettings()
+        case "electives": ElectiveCreditsView()
+        case "about": AboutView()
+        case "account": AccountView()
+        case "manual":
+            if let lesson = planner.saved.manual.first(where: { "manual-" + $0.id == item.id }) {
+                LessonDetail(lesson: lesson)
+            } else { Text("课程已移除") }
+        default: RecordDetailView(record: TableRecord(id: item.id, fields: item.fields))
+        }
     }
 }

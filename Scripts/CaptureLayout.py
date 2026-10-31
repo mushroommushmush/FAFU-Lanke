@@ -38,5 +38,9 @@ for d in chosen:
         run('launch', udid, 'app.personal.fafucampus', '--layout-preview', '--preview-exams')
         time.sleep(6)
         run('io', udid, 'screenshot', str(out / 'Dark-exams.png'))
+        run('terminate', udid, 'app.personal.fafucampus')
+        run('launch', udid, 'app.personal.fafucampus', '--layout-preview', '--preview-search')
+        time.sleep(6)
+        run('io', udid, 'screenshot', str(out / 'Native-search.png'))
     finally:
         subprocess.run(['xcrun', 'simctl', 'shutdown', udid], check=False)
