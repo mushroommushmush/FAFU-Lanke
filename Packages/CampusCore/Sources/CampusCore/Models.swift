@@ -108,11 +108,11 @@ public struct AppSearchEntry: Identifiable, Sendable {
 public enum AppSearchIndex {
     public static func entries(snapshot: CampusSnapshot?, manual: [Lesson], hidden: Set<String> = []) -> [AppSearchEntry] {
         let features: [(String, String, String)] = [
-            ("我的课表", "schedule", "课程表 日程 列表 表格"),
+            ("我的课表", "schedule", "课程表 日程 列表 表格 学校原始课表 课程详情 从当日课程表删除 调停课说明"),
             ("我的成绩", "grades", "分数 成绩查询 绩点 学分"),
             ("考试安排", "exams", "考试时间 考场 座位号"),
-            ("我的", "account", "个人信息 学号 姓名 登录 自动登录 记住密码 恢复连接 刷新全部数据 离线缓存 清除数据 退出账号"),
-            ("课表设置", "settings", "列表 表格 周数 开学日期 作息 上课时间 实时活动 灵动岛"),
+            ("我的", "account", "个人信息 学号 姓名 当前状态 查询与数据 登录 自动登录 记住密码并自动登录 恢复连接 刷新全部数据 离线缓存 返回登录 保留离线数据 清除本地数据并退出 退出示例 登录学校账号 退出账号"),
+            ("课表设置", "settings", "课表模式 列表 表格 周数 开学日期 第1周周一 当前学期校历 作息 上课时间 实时活动 课程实时活动 灵动岛 恢复已删除的课程"),
             ("学分（选修）查询", "electives", "培养计划 通识 任意选修课 自然科学 文学 艺术 体育 人文 创新创业"),
             ("添加课程", "add", "手动 临时课程 新增"),
             ("教务原网页", "portal", "学校网站 登录 修改密码"),
@@ -124,7 +124,7 @@ public enum AppSearchIndex {
             fields: [TableField(label: "学号", value: snapshot.student.account)], keywords: "姓名 学号"))
         for course in snapshot.timetable?.courses ?? [] {
             result.append(AppSearchEntry(id: "course-" + course.id, title: course.content.components(separatedBy: .newlines).first ?? "课程", category: "课表", route: "record",
-                fields: [TableField(label: "课程名称", value: course.content.components(separatedBy: .newlines).first ?? "课程"), TableField(label: "星期", value: "周" + String(course.weekday)), TableField(label: "节次", value: course.period), TableField(label: "学校原始信息", value: course.content)], keywords: "课程 教室 教师 周次"))
+                fields: [TableField(label: "课程名称", value: course.content.components(separatedBy: .newlines).first ?? "课程"), TableField(label: "星期", value: "星期" + ["一", "二", "三", "四", "五", "六", "日"][max(0, min(6, course.weekday - 1))]), TableField(label: "节次", value: course.period), TableField(label: "学校原始信息", value: course.content)], keywords: "课程 教室 教师 周次"))
         }
         if let adjustment = snapshot.timetable?.adjustments, !adjustment.isEmpty {
             result.append(AppSearchEntry(id: "adjustments", title: "调停课说明", category: "调停课说明", route: "record", fields: [TableField(label: "学校原始说明", value: adjustment)], keywords: "调课 停课 补课"))
