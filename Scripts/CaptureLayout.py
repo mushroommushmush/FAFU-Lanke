@@ -17,7 +17,7 @@ if runtimes and phones:
     udid = subprocess.check_output(['xcrun', 'simctl', 'create', 'Lanke Fresh Layout', device_type['identifier'], runtime['identifier']], text=True).strip()
     chosen = [{'name': device_type['name'], 'udid': udid}]
     (out / 'DEVICE.txt').write_text('Fresh device: ' + udid + '\nRuntime: ' + runtime['identifier'])
-    subprocess.run(['open', '-a', 'Simulator', '--args', '-CurrentDeviceUDID', udid], check=False)
+    subprocess.run(['open', '-a', '/Applications/Xcode_26.3.app/Contents/Developer/Applications/Simulator.app', '--args', '-CurrentDeviceUDID', udid], check=False)
 else:
     (out / 'NOT_CAPTURED.txt').write_text('No available iOS 26 simulator runtime; visual validation is pending.')
 for d in chosen:

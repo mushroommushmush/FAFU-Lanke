@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/preview-widgets.yml"
+      - "Scripts/CaptureLayout.py"
+concurrency:
+  group: widget-layout-preview
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
