@@ -32,8 +32,9 @@ for d in chosen:
         time.sleep(10)
         run('io', udid, 'screenshot', str(out / (d['name'].replace(' ', '_') + '.png')))
         run('terminate', udid, 'app.personal.fafucampus')
-        run('launch', udid, 'app.personal.fafucampus', '--widget-preview')
+        run('launch', udid, 'app.personal.fafucampus', '--widget-preview', '--layout-preview')
         time.sleep(6)
         run('io', udid, 'screenshot', str(out / 'Home-widget-design.png'))
     finally:
         subprocess.run(['xcrun', 'simctl', 'shutdown', udid], check=False)
+
