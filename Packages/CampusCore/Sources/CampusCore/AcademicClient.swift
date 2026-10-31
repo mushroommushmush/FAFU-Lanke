@@ -197,6 +197,12 @@ public actor AcademicClient {
         let page = try await semesterPage("xskscx.aspx", code: "N121604", semester: semester)
         return try HTMLParser.records(page, page: "考试安排")
     }
+    public func portalURL() throws -> URL { try pageURL("xs_main.aspx") }
+    public func fetchElectives() async throws -> RecordsReport {
+        let url = try pageURL("pyjh.aspx", code: "N121607")
+        let source = try await html(url, referer: pageURL("xs_main.aspx"))
+        return try HTMLParser.electives(source)
+    }
     public func fetchGrades() async throws -> RecordsReport {
         let url = try pageURL("xscjcx_dq_fafu.aspx", code: "N121605")
         let first = try await html(url, referer: pageURL("xs_main.aspx"))

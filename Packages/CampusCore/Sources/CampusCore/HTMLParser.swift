@@ -109,6 +109,28 @@ public enum HTMLParser {
         return RecordsReport(records: items, options: try options(html))
     }
 
+    /// Preserve school-provided labels and values; do not infer graduation requirements.
+    public static func electives(_ html: String) throws -> RecordsReport {
+        try requireAuthenticated(html)
+        let doc = try SwiftSoup.parse(html)
+        let tables = try doc.select("table[id=DataGrid5], table[id=DataGrid4]").array()
+        guard !tables.isEmpty else { throw CampusError.unexpectedPage("选修学分") }
+        var records: [TableRecord] = []
+        for table in tables {
+            let rows = try table.select("tr").array()
+            for row in rows {
+                let values = try row.children().array().filter { ["td", "th"].contains($0.tagName().lowercased()) }.map { try $0.text() }.filter { !$0.isEmpty }
+                guard !values.isEmpty else { continue }
+                // iFAFU reads DataGrid5's first row too: each cell can contain a category and its credit count.
+                // Keep the complete school text instead of guessing which number is earned/required.
+                let fields = values.enumerated().map { index, value in
+                    TableField(label: index == 0 ? "学校统计" : "统计信息", value: value)
+                }
+                records.append(TableRecord(id: "elective-\(records.count)", fields: fields))
+            }
+        }
+        return RecordsReport(records: records, options: try options(html))
+    }
     private struct GridCell {
         let row: Int; let column: Int; let rowspan: Int; let text: String
     }

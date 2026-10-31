@@ -71,3 +71,27 @@ struct SessionVault {
         .message("无法读写本机登录状态（钥匙串错误码：\(status)）。")
     }
 }
+
+struct LoginCredentials: Codable { let account: String; let password: String }
+struct CredentialsVault {
+    private var key: [String: Any] { [kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "app.personal.fafucampus.credentials", kSecAttrAccount as String: "remembered"] }
+    func load() -> LoginCredentials? {
+        var query = key; query[kSecReturnData as String] = true
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
+        return try? JSONDecoder().decode(LoginCredentials.self, from: data)
+    }
+    func clear() { SecItemDelete(key as CFDictionary) }
+    func save(_ value: LoginCredentials) throws {
+        let data = try JSONEncoder().encode(value)
+        let attributes: [String: Any] = [kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        var status = SecItemUpdate(key as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = key; attributes.forEach { item[$0.key] = $0.value }
+            status = SecItemAdd(item as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else { throw CampusError.message("无法保存自动登录信息（\(status)）。") }
+    }
+}

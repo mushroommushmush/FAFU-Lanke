@@ -75,6 +75,7 @@ public struct CampusSnapshot: Codable, Sendable {
     public var timetable: TimetableReport?
     public var grades: RecordsReport?
     public var exams: RecordsReport?
+    public var electives: RecordsReport?
     public init(student: Student) { schemaVersion = 1; self.student = student }
 }
 public enum CampusError: LocalizedError, Equatable, Sendable {

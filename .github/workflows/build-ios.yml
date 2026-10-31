@@ -96,7 +96,6 @@ jobs:
           -derivedDataPath build/Simulator CODE_SIGNING_ALLOWED=NO build
       - name: Capture native picker and heading
         run: |
-          python3 Scripts/PrepareWidgetSigning.py build/Simulator/Build/Products/Debug-iphonesimulator/FAFUCampus.app
           python3 Scripts/CaptureLayout.py
       - name: Upload layout screenshots
         if: always()
@@ -106,4 +105,3 @@ jobs:
           path: build/layout-preview
           if-no-files-found: warn
           retention-days: 7
-

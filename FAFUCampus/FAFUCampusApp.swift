@@ -3,18 +3,12 @@ import SwiftUI
 @main @MainActor struct FAFUCampusApp: App {
     @StateObject private var store = CampusStore()
     @StateObject private var planner = Planner()
-    @StateObject private var widgetPublisher = HomeWidgetPublisher()
     @StateObject private var activities = LessonActivityManager()
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            Group {
-                if ProcessInfo.processInfo.arguments.contains("--widget-preview") { HomeWidgetDesignPreview() }
-                else { RootView() }
-            }
+            RootView()
                 .background { ActivityCoordinator() }
-                .background { HomeWidgetCoordinator() }
-                .environmentObject(widgetPublisher)
                 .environmentObject(store)
                 .environmentObject(planner)
                 .environmentObject(activities)

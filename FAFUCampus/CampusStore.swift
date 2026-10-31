@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Combine
+import Vision
 import CampusCore
 
 @MainActor final class CampusStore: ObservableObject {
@@ -17,6 +18,70 @@ import CampusCore
     private let cache = CacheStore()
 
     private let vault = SessionVault()
+    private let credentials = CredentialsVault()
+    @Published var rememberLogin = UserDefaults.standard.bool(forKey: "lanke.rememberLogin")
+    var rememberedCredentials: LoginCredentials? { credentials.load() }
+    func setRememberLogin(_ enabled: Bool) {
+        rememberLogin = enabled
+        UserDefaults.standard.set(enabled, forKey: "lanke.rememberLogin")
+        if !enabled { credentials.clear() }
+    }
+    private func automaticLogin() async throws {
+        guard rememberLogin, let value = credentials.load() else { throw CampusError.sessionExpired }
+        let challenge = try await client.prepareLogin()
+        let recognized = await Task.detached { () -> String? in
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = false
+            request.recognitionLanguages = ["en-US"]
+            do {
+                try VNImageRequestHandler(data: challenge.image).perform([request])
+                let text = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined() ?? ""
+                let code = text.filter { $0.isASCII && $0.isLetter || $0.isNumber }
+                return code.count == 4 ? code : nil
+            } catch { return nil }
+        }.value
+        guard let recognized else {
+            captchaImage = UIImage(data: challenge.image)
+            throw CampusError.message("验证码需要手动输入，请返回登录页完成登录。")
+        }
+        let student = try await client.login(account: value.account, password: value.password, captcha: recognized)
+        guard snapshot == nil || snapshot?.student.account == student.account else { throw CampusError.sessionExpired }
+        if snapshot == nil { snapshot = CampusSnapshot(student: student) }
+        mode = .online; needsLogin = false
+        try await saveSession()
+    }
+    func portalSession() async -> SavedSession? {
+        guard mode != .demo else { return nil }
+        return await client.savedSession() ?? (try? vault.load())
+    }
+    func acceptPortalSession(_ saved: SavedSession) async {
+        guard !busy, mode != .demo,
+            snapshot == nil || snapshot?.student.account == saved.student.account else { return }
+        busy = true; defer { busy = false }
+        // Validate in a separate client before replacing the app's current identity/session.
+        let candidate = AcademicClient()
+        do {
+            try await candidate.restore(saved)
+            _ = try await candidate.validateSession()
+            try await client.restore(saved)
+            if snapshot == nil { snapshot = CampusSnapshot(student: saved.student) }
+            cachedStudent = saved.student; mode = .online; needsLogin = false
+            try await saveSession(); persist()
+        } catch { /* A login page or expired browser session must not replace a valid native session. */ }
+    }
+    func refreshElectives() async {
+        guard !busy, isOnline else { return }
+        busy = true; defer { busy = false }
+        do {
+            do { snapshot?.electives = try await client.fetchElectives() }
+            catch CampusError.sessionExpired {
+                try await automaticLogin()
+                snapshot?.electives = try await client.fetchElectives()
+            }
+            try await saveSession(); persist()
+        } catch { message = friendly(error) }
+    }
     private var didRestore = false
     @Published var restoring = false
     @Published var hasSavedSession = false
@@ -40,10 +105,13 @@ import CampusCore
         busy = true; restoring = true
         defer { busy = false; restoring = false }
         do {
-            guard let saved = try vault.load() else { return }
+            guard let saved = try vault.load() else {
+                if rememberLogin { try await automaticLogin() }; return
+            }
             hasSavedSession = true
             try await client.restore(saved)
-            _ = try await client.validateSession()
+            do { _ = try await client.validateSession() }
+            catch CampusError.sessionExpired { try await automaticLogin() }
             if snapshot?.student.account != saved.student.account { snapshot = CampusSnapshot(student: saved.student) }
             mode = .online; needsLogin = false
             do { try await saveSession() }
@@ -90,13 +158,17 @@ import CampusCore
             // Never show a previous account's records under a new identity.
             if let cached = cache.load(), cached.student.account == student.account {
                 var current = CampusSnapshot(student: student)
-                current.timetable = cached.timetable; current.grades = cached.grades; current.exams = cached.exams
+                current.timetable = cached.timetable; current.grades = cached.grades; current.exams = cached.exams; current.electives = cached.electives
                 snapshot = current
             } else {
                 try cache.clear()
                 snapshot = CampusSnapshot(student: student)
             }
             mode = .online; needsLogin = false; captchaImage = nil; cachedStudent = student
+            if rememberLogin {
+                do { try credentials.save(LoginCredentials(account: account, password: password)) }
+                catch { message = friendly(error) }
+            } else { credentials.clear() }
             persist()
             do { try await saveSession() }
             catch { message = "已登录，但未能保存登录状态：\(friendly(error))" }
@@ -120,7 +192,11 @@ import CampusCore
         busy = true
         defer { busy = false }
         do {
-            try await fetch(feature, semester: semester)
+            do { try await fetch(feature, semester: semester) }
+            catch CampusError.sessionExpired {
+                try await automaticLogin()
+                try await fetch(feature, semester: semester)
+            }
             try await saveSession()
             persist()
         } catch {
@@ -135,7 +211,10 @@ import CampusCore
         var failures: [String] = []
         for feature in Feature.allCases {
             guard isOnline else { break }
-            do { try await fetch(feature) }
+            do {
+                do { try await fetch(feature) }
+                catch CampusError.sessionExpired { try await automaticLogin(); try await fetch(feature) }
+            }
             catch {
                 if (error as? CampusError) == .sessionExpired { needsLogin = true }
                 failures.append("\(feature.rawValue)：\(friendly(error))")
@@ -158,10 +237,17 @@ import CampusCore
         guard !busy else { return }
         snapshot = DemoData.snapshot; mode = .demo; needsLogin = false
     }
+    func requestLogin() async {
+        guard !busy else { return }
+        await client.signOut()
+        snapshot = nil; mode = .login; needsLogin = false; captchaImage = nil
+    }
     func returnToLogin() async {
         guard !busy else { return }
         do { try vault.clear() } catch { message = friendly(error); return }
         hasSavedSession = false
+        credentials.clear(); setRememberLogin(false)
+        await PortalModel.clearWebsite()
         await client.signOut()
         snapshot = nil; mode = .login; captchaImage = nil; needsLogin = false
         cachedStudent = cache.load()?.student

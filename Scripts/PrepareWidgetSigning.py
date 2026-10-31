@@ -15,7 +15,7 @@ for bundle in [*app.glob('PlugIns/*.appex'), app]:
     entitlements = {
         'application-identifier': 'LANKE00000.' + identity,
         'com.apple.developer.team-identifier': 'LANKE00000',
-        'keychain-access-groups': ['LANKE00000.' + identity, 'LANKE00000.app.personal.fafucampus.widget-data'],
+        'keychain-access-groups': ['LANKE00000.' + identity],
     }
     path = metadata / (identity + '.plist')
     path.write_bytes(plistlib.dumps(entitlements))

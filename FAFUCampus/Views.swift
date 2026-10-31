@@ -3,7 +3,10 @@ import CampusCore
 
 private enum PortalSheet: String, Identifiable { case portal; var id: String { rawValue } }
 enum Palette {
-    static let forest = Color(red: 0.12, green: 0.34, blue: 0.25)
+    static let forest = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.63, green: 0.83, blue: 0.69, alpha: 1) : UIColor(red: 0.12, green: 0.34, blue: 0.25, alpha: 1)
+    })
+    static let card = Color(uiColor: .secondarySystemGroupedBackground)
     static let background = Color(uiColor: .systemGroupedBackground)
 }
 
@@ -19,7 +22,10 @@ struct RootView: View {
                     RecordsView(feature: .grades).tag(1).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
                     RecordsView(feature: .exams).tag(2).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
                     AccountView().tag(3).tabItem { Label("我的", systemImage: "person.crop.circle") }
-                }.onOpenURL { url in if url.scheme == "lanke", url.host == "timetable" { selectedTab = 0 } }
+                }
+                .toolbar(.hidden, for: .tabBar)
+                .safeAreaInset(edge: .bottom, spacing: 0) { SeparatedTabBar(selection: $selectedTab) }
+                .onOpenURL { url in if url.scheme == "lanke", url.host == "timetable" { selectedTab = 0 } }
             }
         }
     }
@@ -61,7 +67,7 @@ struct LoginView: View {
                                 } else { Text("获取验证码").font(.callout).frame(minHeight: 44) }
                             }.accessibilityLabel("获取或更换验证码")
                         }
-                    }.padding(22).background(.background, in: RoundedRectangle(cornerRadius: 22))
+                    }.padding(22).background(Palette.card, in: RoundedRectangle(cornerRadius: 22))
                     VStack(spacing: 12) {
                         Button {
                             let secret = password
@@ -73,7 +79,8 @@ struct LoginView: View {
                                 .frame(maxWidth: .infinity).padding(.vertical, 9)
                         }.modifier(LankePrimaryButton()).controlSize(.large)
                             .disabled(store.busy || account.isEmpty || password.isEmpty || captcha.isEmpty || store.captchaImage == nil)
-                        Text("学校入口使用 HTTP，登录信息会通过未加密连接传输。密码不保存；登录会话保存在本机钥匙串，用于下次自动恢复。")
+                        Toggle("记住密码并自动登录", isOn: Binding(get: { store.rememberLogin }, set: { store.setRememberLogin($0) }))
+                        Text("学校入口使用 HTTP。会话保存在本机钥匙串；开启自动登录后，密码也仅保存在本机钥匙串。验证码无法识别时需手动输入。")
                             .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let cached = store.cachedStudent {
@@ -87,6 +94,11 @@ struct LoginView: View {
                 }.padding(24).disabled(store.busy)
             }
             .background(Palette.background)
+            .onAppear {
+                if let remembered = store.rememberedCredentials, account.isEmpty {
+                    account = remembered.account; password = remembered.password
+                }
+            }
             .sheet(item: $portal) { _ in SchoolPortalView() }
         }
     }
@@ -184,7 +196,7 @@ struct RecordsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if store.needsLogin {
-                        Button("重新登录以更新数据") { Task { await store.returnToLogin() } }.disabled(store.busy)
+                        Button("重新登录以更新数据") { Task { await store.requestLogin() } }.disabled(store.busy)
                     } else if store.hasSavedSession && !store.isOnline {
                         Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
                     }
@@ -230,7 +242,7 @@ struct RecordsView: View {
                                             .font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(Palette.forest)
                                     }
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                                }.padding(20).background(.background, in: RoundedRectangle(cornerRadius: 18))
+                                }.padding(20).background(Palette.card, in: RoundedRectangle(cornerRadius: 18))
                             }.buttonStyle(.plain)
                         }
                     }
@@ -269,7 +281,6 @@ struct RecordDetailView: View {
 
 struct AccountView: View {
     @EnvironmentObject var store: CampusStore
-    @EnvironmentObject var widgetPublisher: HomeWidgetPublisher
     @State private var portal: PortalSheet?
     @EnvironmentObject var planner: Planner
     @State private var confirmClear = false
@@ -285,11 +296,10 @@ struct AccountView: View {
                     } icon: { Image(systemName: "person.crop.circle.fill").font(.largeTitle).foregroundStyle(Palette.forest) }
                     LabeledContent("当前状态", value: store.badge)
                 }
-                Section { NavigationLink("课表设置") { ScheduleSettings() } }
-                Section("主屏幕小组件") {
-                    Text(widgetPublisher.status).font(.footnote)
-                    Button("同步小组件") { widgetPublisher.publish(store: store, planner: planner) }
-                    Text("长按主屏幕空白处，添加“览课”的今日课表与下一节课。更新由系统调度，签名需保留共享钥匙串权限。").font(.caption).foregroundStyle(.secondary)
+                Section {
+                    NavigationLink("课表设置") { ScheduleSettings() }
+                    NavigationLink("学分（选修）查询") { ElectiveCreditsView() }
+                    Toggle("记住密码并自动登录", isOn: Binding(get: { store.rememberLogin }, set: { store.setRememberLogin($0) }))
                 }
                 Section("查询与数据") {
                     Button("刷新全部数据") { Task { await store.refreshAll() } }.disabled(store.busy || !store.isOnline)
@@ -342,7 +352,7 @@ struct AboutView: View {
                 Text("非学校官方应用。数据来自你登录后的教务网页；课表、成绩与考试安排在本机解析。")
             }
             Section("登录与数据") {
-                Text("登录会话保存在本机钥匙串。关闭应用后会自动恢复并向学校验证；会话失效时需要重新输入验证码登录。密码不保存。")
+                Text("登录会话保存在本机钥匙串。关闭应用后会自动恢复并向学校验证；会话失效时需要重新输入验证码登录。密码仅在开启自动登录后保存在本机钥匙串。")
                 Text("学校入口使用 HTTP。已下载的记录保存在本机，不包含密码或网页原文。退出登录会移除已保存的会话。")
                 Text("多任务界面正常显示当前页面。")
             }
@@ -377,5 +387,57 @@ struct RecordsSearchView: View {
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索课程或其他信息")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }
+    }
+}
+
+struct SeparatedTabBar: View {
+    @Binding var selection: Int
+    private let icons = ["calendar", "chart.bar.xaxis", "pencil.and.list.clipboard", "person.crop.circle"]
+    private let labels = ["课表", "成绩", "考试", "我的"]
+    private func item(_ index: Int) -> some View {
+        Button { selection = index } label: {
+            VStack(spacing: 3) {
+                Image(systemName: icons[index]).font(.system(size: 23, weight: .semibold))
+                Text(labels[index]).font(.caption2)
+            }.foregroundStyle(selection == index ? Palette.forest : Color.primary)
+                .frame(maxWidth: .infinity).frame(height: 56)
+                .background(selection == index ? Color.primary.opacity(0.09) : .clear, in: Capsule())
+                .contentShape(Capsule())
+        }.buttonStyle(.plain).accessibilityAddTraits(selection == index ? .isSelected : [])
+    }
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 3) { ForEach(0..<3) { item($0) } }.padding(5).modifier(TabBarGlass())
+            item(3).frame(width: 66).padding(5).modifier(TabBarGlass())
+        }.padding(.horizontal, 18).padding(.top, 6).padding(.bottom, 4)
+    }
+}
+private struct TabBarGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) { content.glassEffect(.regular.interactive(), in: Capsule()) }
+        else { content.background(.regularMaterial, in: Capsule()) }
+    }
+}
+struct ElectiveCreditsView: View {
+    @EnvironmentObject var store: CampusStore
+    var body: some View {
+        List {
+            if let report = store.snapshot?.electives {
+                Section { Text(SchoolSchedule.updateAge(report.fetchedAt, now: .now)).font(.caption).foregroundStyle(.secondary) }
+                ForEach(report.records) { record in
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(record.fields.enumerated()), id: \.offset) { _, field in
+                            LabeledContent(field.label, value: field.value.isEmpty ? "—" : field.value)
+                        }
+                    }.padding(.vertical, 8)
+                }
+                Section { Text("以上为学校培养计划页面的原始统计；培养要求以学校发布内容为准。").font(.footnote).foregroundStyle(.secondary) }
+            } else {
+                Text(store.mode == .demo ? "示例模式不提供学分统计，请登录后查询。" : "尚未查询选修学分。")
+            }
+        }.navigationTitle("学分（选修）").navigationBarTitleDisplayMode(.inline)
+            .overlay { if store.busy { ProgressView() } }
+            .toolbar { Button { Task { await store.refreshElectives() } } label: { Image(systemName: "arrow.clockwise") }.disabled(store.busy || !store.isOnline) }
+            .task { if store.snapshot?.electives == nil { await store.refreshElectives() } }
     }
 }

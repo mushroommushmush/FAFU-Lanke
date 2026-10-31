@@ -124,7 +124,7 @@ struct ScheduleHome: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: grid ? 10 : 18) {
-                    if store.needsLogin { Button("重新登录以更新数据") { Task { await store.returnToLogin() } } }
+                    if store.needsLogin { Button("重新登录以更新数据") { Task { await store.requestLogin() } } }
                     ScheduleQueryBar(options: report?.options, disabled: store.busy || !store.isOnline,
                         day: $day, beginning: planner.beginning(report)) { value in
                             Task { await store.refresh(.timetable, semester: value) }
