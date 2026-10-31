@@ -16,11 +16,21 @@ struct CoursesProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<CourseWidgetEntry>) -> Void) {
         let entry = load()
         let dates = entry.packet?.timelineDates(after: entry.date) ?? [entry.date]
-        let entries = dates.map { CourseWidgetEntry(date: $0, packet: entry.packet, problem: entry.problem) }
+        let entries = dates.map { date in
+            if let packet = entry.packet, !packet.covers(date) {
+                return CourseWidgetEntry(date: date, packet: nil, problem: "课表缓存已过期，请打开览课同步")
+            }
+            return CourseWidgetEntry(date: date, packet: entry.packet, problem: entry.problem)
+        }
         completion(Timeline(entries: entries, policy: .after(entry.date.addingTimeInterval(6 * 3600))))
     }
     private func load() -> CourseWidgetEntry {
-        do { return CourseWidgetEntry(date: Date(), packet: try HomeWidgetCache.read()) }
+        do {
+            let now = Date()
+            let packet = try HomeWidgetCache.read()
+            if let packet, !packet.covers(now) { return CourseWidgetEntry(date: now, packet: nil, problem: "课表缓存已过期，请打开览课同步") }
+            return CourseWidgetEntry(date: now, packet: packet)
+        }
         catch { return CourseWidgetEntry(date: Date(), packet: nil, problem: "请打开览课检查小组件同步") }
     }
     func sample() -> CourseWidgetEntry {
@@ -37,6 +47,7 @@ struct CoursesProvider: TimelineProvider {
 
 struct HomeCoursesView: View {
     let entry: CourseWidgetEntry
+    var previewFamily: WidgetFamily? = nil
     @Environment(\.widgetFamily) private var family
     private let forest = Color(red: 0.12, green: 0.34, blue: 0.25)
     private let yellow = Color(red: 250/255, green: 192/255, blue: 61/255)
@@ -63,7 +74,7 @@ struct HomeCoursesView: View {
                 Text("课表在这里").font(.headline)
                 Text(entry.problem ?? "打开览课，登录后同步课表").font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-            } else if family == .systemSmall {
+            } else if (previewFamily ?? family) == .systemSmall {
                 small
             } else {
                 medium
@@ -139,9 +150,9 @@ struct HomeWidgetDesignPreview: View {
             VStack(alignment: .leading, spacing: 24) {
                 Text("主屏幕小组件 · 设计预览").font(.title2.bold())
                 Text("使用示例课程数据").font(.caption).foregroundStyle(.secondary)
-                HomeCoursesView(entry: CoursesProvider().sample()).environment(\.widgetFamily, .systemSmall)
+                HomeCoursesView(entry: CoursesProvider().sample(), previewFamily: .systemSmall)
                     .padding(16).frame(width: 170, height: 170).background(.background, in: RoundedRectangle(cornerRadius: 24))
-                HomeCoursesView(entry: CoursesProvider().sample()).environment(\.widgetFamily, .systemMedium)
+                HomeCoursesView(entry: CoursesProvider().sample(), previewFamily: .systemMedium)
                     .padding(16).frame(maxWidth: 360).frame(height: 170).background(.background, in: RoundedRectangle(cornerRadius: 24))
             }.padding(20)
         }.background(Color(uiColor: .systemGroupedBackground))

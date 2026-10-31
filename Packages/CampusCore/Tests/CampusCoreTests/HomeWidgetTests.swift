@@ -2,6 +2,14 @@ import XCTest
 @testable import CampusCore
 
 final class HomeWidgetTests: XCTestCase {
+    func testCoverageExpiresInsteadOfClaimingNoClasses() {
+        let start = SchoolSchedule.date(2026, 10, 31)
+        let end = start.addingTimeInterval(7*86400)
+        let packet = HomeWidgetSnapshot(lessons: [], sourceUpdatedAt: start, coverageStart: start, coverageEnd: end)
+        XCTAssertTrue(packet.covers(start))
+        XCTAssertFalse(packet.covers(end))
+        XCTAssertFalse(packet.covers(start.addingTimeInterval(-1)))
+    }
     private let day = SchoolSchedule.date(2026, 10, 31)
     private func lesson(_ id: String, _ start: TimeInterval, _ end: TimeInterval) -> HomeWidgetLesson {
         HomeWidgetLesson(id: id, name: "课程", room: "诚A601", start: day.addingTimeInterval(start), end: day.addingTimeInterval(end))

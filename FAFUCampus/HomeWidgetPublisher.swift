@@ -32,7 +32,9 @@ import CampusCore
             let day = SchoolSchedule.calendar.date(byAdding: .day, value: offset, to: now)!
             return planner.lessons(snapshot.timetable, on: day).map(HomeWidgetLesson.init)
         }
-        let packet = HomeWidgetSnapshot(lessons: Array(lessons.prefix(100)), sourceUpdatedAt: snapshot.timetable?.fetchedAt)
+        let midnight = SchoolSchedule.calendar.startOfDay(for: now)
+        let packet = HomeWidgetSnapshot(lessons: Array(lessons.prefix(100)), sourceUpdatedAt: snapshot.timetable?.fetchedAt,
+            coverageStart: midnight, coverageEnd: SchoolSchedule.calendar.date(byAdding: .day, value: 7, to: midnight))
         guard packet != previous || snapshot.student.account != previousAccount else { return }
         do {
             try HomeWidgetCache.write(packet)

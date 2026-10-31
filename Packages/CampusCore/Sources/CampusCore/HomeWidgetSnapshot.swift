@@ -17,9 +17,15 @@ public struct HomeWidgetLesson: Codable, Equatable, Identifiable, Sendable {
 public struct HomeWidgetSnapshot: Codable, Equatable, Sendable {
     public var lessons: [HomeWidgetLesson]
     public var sourceUpdatedAt: Date?
-    public init(lessons: [HomeWidgetLesson], sourceUpdatedAt: Date?) {
+    public var coverageStart: Date?
+    public var coverageEnd: Date?
+    public init(lessons: [HomeWidgetLesson], sourceUpdatedAt: Date?, coverageStart: Date? = nil, coverageEnd: Date? = nil) {
         self.lessons = lessons.sorted { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
         self.sourceUpdatedAt = sourceUpdatedAt
+        self.coverageStart = coverageStart; self.coverageEnd = coverageEnd
+    }
+    public func covers(_ date: Date) -> Bool {
+        (coverageStart == nil || date >= coverageStart!) && (coverageEnd == nil || date < coverageEnd!)
     }
     public func today(at date: Date) -> [HomeWidgetLesson] {
         lessons.filter { SchoolSchedule.calendar.isDate($0.start, inSameDayAs: date) }
