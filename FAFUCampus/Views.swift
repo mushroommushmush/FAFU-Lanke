@@ -24,7 +24,7 @@ struct RootView: View {
                     Tab("考试", systemImage: "pencil.and.list.clipboard", value: 2) { RecordsView(feature: .exams) }
                     Tab("我的", systemImage: "person.crop.circle", value: 3) { AccountView() }
                     Tab("搜索", systemImage: "magnifyingglass", value: 4, role: .search) {
-                        UniversalSearchView(query: $searchText)
+                        UniversalSearchView(query: $searchText, selectTab: { selectedTab = $0 })
                     }
                 }
                 .searchable(text: $searchText, prompt: "搜索功能、课程和信息")
@@ -37,7 +37,7 @@ struct RootView: View {
                     RecordsView(feature: .grades).tag(1).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
                     RecordsView(feature: .exams).tag(2).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
                     AccountView().tag(3).tabItem { Label("我的", systemImage: "person.crop.circle") }
-                    UniversalSearchView(query: $searchText).searchable(text: $searchText, prompt: "搜索功能、课程和信息")
+                    UniversalSearchView(query: $searchText, selectTab: { selectedTab = $0 }).searchable(text: $searchText, prompt: "搜索功能、课程和信息")
                         .tag(4).tabItem { Label("搜索", systemImage: "magnifyingglass") }
                 }
             }
@@ -430,6 +430,7 @@ struct ElectiveCreditsView: View {
 
 struct UniversalSearchView: View {
     @Binding var query: String
+    let selectTab: (Int) -> Void
     @EnvironmentObject private var store: CampusStore
     @EnvironmentObject private var planner: Planner
     @State private var showPortal = false
@@ -453,7 +454,9 @@ struct UniversalSearchView: View {
                     if !items.isEmpty {
                         Section(category) {
                             ForEach(items) { item in
-                                if item.route == "portal" {
+                                if let tab = ["schedule": 0, "grades": 1, "exams": 2, "account": 3][item.route] {
+                                    Button { selectTab(tab) } label: { resultLabel(item) }
+                                } else if item.route == "portal" {
                                     Button { showPortal = true } label: { resultLabel(item) }
                                 } else if item.route == "add" {
                                     Button { addingLesson = true } label: { resultLabel(item) }
