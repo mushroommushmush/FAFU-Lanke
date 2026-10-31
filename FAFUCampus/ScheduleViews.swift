@@ -111,7 +111,7 @@ struct WeekGlassPicker: View {
     private var control: some View {
         Text("第\(week)周").font(.caption.weight(.semibold))
             .frame(width: 66, height: 34).modifier(WeekGlassSurface())
-            .overlay {
+            .overlay(alignment: .trailing) {
                 if anchor != nil {
                     HStack(spacing: 0) {
                         ForEach(-1...1, id: \.self) { offset in
@@ -440,3 +440,4 @@ struct ScheduleSettings: View {
             .environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
 }
+
