@@ -18,13 +18,13 @@ import Combine
         key = next
         if let data = UserDefaults.standard.data(forKey: key) {
             do { saved = try JSONDecoder().decode(Saved.self, from: data) }
-            catch { saved = Saved(); error = "本机课程设置读取失败，原数据仍保留。" }
+            catch { saved = Saved(); self.error = "本机课程设置读取失败，原数据仍保留。" }
         } else { saved = Saved() }
     }
     func persist() {
         guard !key.isEmpty else { return }
         do { UserDefaults.standard.set(try JSONEncoder().encode(saved), forKey: key) }
-        catch { error = "课程设置保存失败：\(error.localizedDescription)" }
+        catch { self.error = "课程设置保存失败：\(error.localizedDescription)" }
     }
     func clear() { UserDefaults.standard.removeObject(forKey: key); saved = Saved() }
     func beginning(_ report: TimetableReport?) -> Date {
@@ -130,6 +130,9 @@ struct ScheduleHome: View {
             }
             .sheet(isPresented: $adding) { AddLessonView(day: day) }
             .sheet(item: $selected) { LessonDetail(lesson: $0) }
+            .alert("课程设置", isPresented: Binding(get: { planner.error != nil }, set: { if !$0 { planner.error = nil } })) {
+                Button("知道了") { planner.error = nil }
+            } message: { Text(planner.error ?? "") }
             .onReceive(ticker) { _ in followToday() }
             .onChange(of: phase) { _, value in if value == .active { followToday() } }
         }
@@ -150,21 +153,23 @@ struct ScheduleHome: View {
                 }.frame(width: 42)
                 ForEach(0..<7, id: \.self) { index in
                     let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
+                    let courses = planner.lessons(report, on: date)
+                    let layout = lanes(for: courses)
                     VStack(spacing: 0) {
                         Text("周\(weekdays[index]) \(SchoolSchedule.calendar.component(.day, from: date))").font(.caption).frame(height: 40)
                         ZStack(alignment: .topLeading) {
                             VStack(spacing: 0) { ForEach(0..<12, id: \.self) { _ in Rectangle().fill(Color.secondary.opacity(0.06)).frame(height: 79).padding(.bottom, 1) } }
-                            ForEach(planner.lessons(report, on: date)) { lesson in
+                            ForEach(courses) { lesson in
                                 TimelineView(.periodic(from: .now, by: 15)) { context in
                                     Button { selected = lesson } label: {
                                         VStack(spacing: 3) {
                                             Text(lesson.name).font(.caption.weight(.semibold))
                                             Text("@" + (lesson.room.isEmpty ? "待确认" : lesson.room)).font(.caption2)
-                                        }.foregroundStyle(.black).padding(4).frame(width: 88, height: max(52, position(lesson.end, end: true) - position(lesson.start)))
+                                        }.foregroundStyle(.black).padding(4).frame(width: 88 / CGFloat(layout.count), height: max(52, position(lesson.end, end: true) - position(lesson.start)))
                                             .background(LessonColors.course(lesson.name), in: RoundedRectangle(cornerRadius: 9))
                                             .overlay(RoundedRectangle(cornerRadius: 9).stroke(lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, lineWidth: 4))
                                             .shadow(color: lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, radius: 8)
-                                    }.buttonStyle(.plain).offset(y: position(lesson.start))
+                                    }.buttonStyle(.plain).offset(x: CGFloat(layout.indices[lesson.id] ?? 0) * 88 / CGFloat(layout.count), y: position(lesson.start))
                                 }
                             }
                         }.frame(width: 88, height: 960)
@@ -172,6 +177,16 @@ struct ScheduleHome: View {
                 }
             }
         }
+    }
+    private func lanes(for courses: [Lesson]) -> (indices: [String: Int], count: Int) {
+        var ends: [Date] = []
+        var indices: [String: Int] = [:]
+        for course in courses.sorted(by: { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }) {
+            let lane = ends.firstIndex(where: { $0 <= course.start }) ?? ends.count
+            if lane == ends.count { ends.append(course.end) } else { ends[lane] = course.end }
+            indices[course.id] = lane
+        }
+        return (indices, max(1, ends.count))
     }
     private func position(_ date: Date, end: Bool = false) -> CGFloat {
         let parts = SchoolSchedule.calendar.dateComponents([.hour, .minute], from: date)
@@ -293,3 +308,4 @@ struct ScheduleSettings: View {
             .environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
 }
+
