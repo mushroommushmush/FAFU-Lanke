@@ -12,18 +12,19 @@ enum Palette {
 
 struct RootView: View {
     @EnvironmentObject var store: CampusStore
-    @State private var selectedTab = 0
+    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("--preview-exams") ? 2 : 0
     var body: some View {
         Group {
             if store.mode == .login { LoginView() }
             else {
-                TabView(selection: $selectedTab) {
-                    ScheduleHome().tag(0).tabItem { Label("课表", systemImage: "calendar") }
-                    RecordsView(feature: .grades).tag(1).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
-                    RecordsView(feature: .exams).tag(2).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
-                    AccountView().tag(3).tabItem { Label("我的", systemImage: "person.crop.circle") }
+                Group {
+                    switch selectedTab {
+                    case 1: RecordsView(feature: .grades).id("grades")
+                    case 2: RecordsView(feature: .exams).id("exams")
+                    case 3: AccountView()
+                    default: ScheduleHome()
+                    }
                 }
-                .toolbar(.hidden, for: .tabBar)
                 .safeAreaInset(edge: .bottom, spacing: 0) { SeparatedTabBar(selection: $selectedTab) }
                 .onOpenURL { url in if url.scheme == "lanke", url.host == "timetable" { selectedTab = 0 } }
             }
