@@ -54,6 +54,17 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath build/Simulator CODE_SIGNING_ALLOWED=NO build
 
+      - name: Capture demo layout on iOS 26 simulators
+        run: python3 Scripts/CaptureLayout.py
+
+      - name: Upload layout screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lanke-layout-preview
+          path: build/layout-preview
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Archive unsigned iPhone app
         run: >-
           xcodebuild -project FAFUCampus.xcodeproj -scheme FAFUCampus

@@ -13,7 +13,13 @@ import SwiftUI
                 .environmentObject(planner)
                 .environmentObject(activities)
                 .tint(Palette.forest)
-                .task { await store.restoreOnLaunch() }
+                .task {
+                    if ProcessInfo.processInfo.arguments.contains("--layout-preview") {
+                        UserDefaults.standard.set(true, forKey: "lanke.schedule.grid")
+                        UserDefaults.standard.set(false, forKey: "lanke.live.enabled.v2")
+                        store.openDemo()
+                    } else { await store.restoreOnLaunch() }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .background { Task { await store.saveSessionOnBackground() } }
                 }

@@ -88,55 +88,18 @@ struct ScheduleQueryBar: View {
     }
 }
 
-private struct WeekGlassSurface: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var opaque
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), !opaque {
-            content.glassEffect(.regular.interactive(), in: .capsule)
-        } else { content.background(.regularMaterial, in: Capsule()) }
-    }
-}
-
 struct WeekGlassPicker: View {
     @Binding var day: Date
     let beginning: Date
-    @State private var anchor: Int?
-    @State private var preview: Int?
     private var week: Int { SchoolSchedule.week(on: day, beginning: beginning) }
-    @ViewBuilder var body: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer { control }
-        } else { control }
-    }
-    private var control: some View {
-        Text("第\(week)周").font(.caption.weight(.semibold))
-            .frame(width: 66, height: 34).modifier(WeekGlassSurface())
-            .overlay(alignment: .trailing) {
-                if anchor != nil {
-                    HStack(spacing: 0) {
-                        ForEach(-1...1, id: \.self) { offset in
-                            let number = (preview ?? week) + offset
-                            Text((1...30).contains(number) ? "第\(number)周" : "")
-                                .font(.subheadline.weight(offset == 0 ? .semibold : .regular))
-                                .foregroundStyle(offset == 0 ? Palette.forest : .secondary)
-                                .frame(width: 66, height: 38)
-                                .background { if offset == 0 { Capsule().fill(.primary.opacity(0.06)).overlay(Capsule().strokeBorder(.primary.opacity(0.18), lineWidth: 1)) } }
-                        }
-                    }.padding(4).modifier(WeekGlassSurface()).transition(.scale(scale: 0.9).combined(with: .opacity))
-                }
-            }
-            .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if anchor == nil { withAnimation(.snappy(duration: 0.18)) { anchor = week } }
-                    preview = max(1, min(30, (anchor ?? week) - Int((value.translation.width / 44).rounded())))
-                }
-                .onEnded { _ in
-                    choose(preview ?? week)
-                    withAnimation(.snappy(duration: 0.18)) { anchor = nil; preview = nil }
-                })
-            .contextMenu { ForEach(1...30, id: \.self) { value in Button("第\(value)周") { choose(value) } } }
-            .accessibilityLabel("第\(week)周，左右滑动调整")
-            .accessibilityAdjustableAction { direction in choose(week + (direction == .increment ? 1 : -1)) }
+    private var neighbors: ClosedRange<Int> { max(1, min(28, week - 1))...max(3, min(30, week + 1)) }
+    var body: some View {
+        Picker("周次", selection: Binding(get: { week }, set: { choose($0) })) {
+            ForEach(neighbors, id: \.self) { value in Text("\(value)周").tag(value) }
+        }
+        .pickerStyle(.segmented).controlSize(.small).frame(width: 140)
+        .accessibilityLabel("选择周次")
+        .contextMenu { ForEach(1...30, id: \.self) { value in Button("第\(value)周") { choose(value) } } }
     }
     private func choose(_ value: Int) {
         let target = max(1, min(30, value))
@@ -215,7 +178,7 @@ struct ScheduleHome: View {
             }
             .background(Palette.background).navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { PageHeading(title: "我的课表", date: report?.fetchedAt) }
+                PageHeadingToolbar(title: "我的课表", date: report?.fetchedAt)
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程")
                     Button { Task { await store.refresh(.timetable, semester: report?.options.selected) } }
@@ -440,4 +403,3 @@ struct ScheduleSettings: View {
             .environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
 }
-

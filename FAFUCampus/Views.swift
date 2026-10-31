@@ -112,7 +112,20 @@ struct PageHeading: View {
                 Text(date.map { SchoolSchedule.updateAge($0, now: context.date) } ?? "尚未获取")
                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
-        }.accessibilityElement(children: .combine)
+        }.fixedSize(horizontal: true, vertical: false).accessibilityElement(children: .combine)
+    }
+}
+
+struct PageHeadingToolbar: ToolbarContent {
+    let title: String
+    let date: Date?
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .topBarLeading) { PageHeading(title: title, date: date) }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .topBarLeading) { PageHeading(title: title, date: date) }
+        }
     }
 }
 
@@ -225,7 +238,7 @@ struct RecordsView: View {
             .background(Palette.background).navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showSearch) { RecordsSearchView(records: filtered, title: feature.rawValue) }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { PageHeading(title: feature == .grades ? "我的成绩" : "考试安排", date: report?.fetchedAt) }
+                PageHeadingToolbar(title: feature == .grades ? "我的成绩" : "考试安排", date: report?.fetchedAt)
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
                         .accessibilityLabel("搜索\(feature.rawValue)")
