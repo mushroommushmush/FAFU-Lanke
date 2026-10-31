@@ -10,6 +10,16 @@ import Combine
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
+        let revision = "0.2.3"
+        if UserDefaults.standard.string(forKey: "lanke.live.layoutRevision") != revision {
+            for activity in Activity<LessonActivity>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("lanke.live.requested.") {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            UserDefaults.standard.set(revision, forKey: "lanke.live.layoutRevision")
+        }
         let now = Date()
         let historyKey = "lanke.live.requested." + account + "." + SchoolSchedule.dayKey(now)
         var requested = Set(UserDefaults.standard.stringArray(forKey: historyKey) ?? [])
@@ -82,3 +92,4 @@ struct ActivityCoordinator: View {
         Task { await activities.sync(lessons: lessons, account: store.snapshot?.student.account ?? "", enabled: allowed) }
     }
 }
+
