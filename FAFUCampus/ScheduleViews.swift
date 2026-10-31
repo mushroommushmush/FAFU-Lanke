@@ -87,6 +87,18 @@ struct ScheduleHome: View {
                     }
                     if grid {
                         weekGrid
+                        TimelineView(.periodic(from: .now, by: 15)) { context in
+                            ForEach(0..<7, id: \.self) { index in
+                                let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
+                                let extra = planner.lessons(report, on: date).filter { !fitsGrid($0) }
+                                if !extra.isEmpty {
+                                    Text("周\(weekdays[index]) · 其他时段").font(.caption).foregroundStyle(.secondary)
+                                    ForEach(extra) { lesson in
+                                        Button { selected = lesson } label: { LessonRow(lesson: lesson, now: context.date) }.buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         Picker("星期", selection: Binding(get: {
                             (SchoolSchedule.calendar.component(.weekday, from: day) + 5) % 7
@@ -153,7 +165,7 @@ struct ScheduleHome: View {
                 }.frame(width: 42)
                 ForEach(0..<7, id: \.self) { index in
                     let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
-                    let courses = planner.lessons(report, on: date)
+                    let courses = planner.lessons(report, on: date).filter { fitsGrid($0) }
                     let layout = lanes(for: courses)
                     VStack(spacing: 0) {
                         Text("周\(weekdays[index]) \(SchoolSchedule.calendar.component(.day, from: date))").font(.caption).frame(height: 40)
@@ -177,6 +189,14 @@ struct ScheduleHome: View {
                 }
             }
         }
+    }
+    private func fitsGrid(_ lesson: Lesson) -> Bool {
+        let cal = SchoolSchedule.calendar
+        let start = cal.dateComponents([.hour, .minute], from: lesson.start)
+        let end = cal.dateComponents([.hour, .minute], from: lesson.end)
+        return cal.isDate(lesson.start, inSameDayAs: lesson.end)
+            && start.hour! * 60 + start.minute! >= planner.saved.starts[0]
+            && end.hour! * 60 + end.minute! <= planner.saved.starts[11] + 45
     }
     private func lanes(for courses: [Lesson]) -> (indices: [String: Int], count: Int) {
         var ends: [Date] = []
