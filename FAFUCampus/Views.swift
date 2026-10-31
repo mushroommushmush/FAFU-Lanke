@@ -9,16 +9,17 @@ enum Palette {
 
 struct RootView: View {
     @EnvironmentObject var store: CampusStore
+    @State private var selectedTab = 0
     var body: some View {
         Group {
             if store.mode == .login { LoginView() }
             else {
-                TabView {
-                    ScheduleHome().tabItem { Label("课表", systemImage: "calendar") }
-                    RecordsView(feature: .grades).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
-                    RecordsView(feature: .exams).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
-                    AccountView().tabItem { Label("我的", systemImage: "person.crop.circle") }
-                }
+                TabView(selection: $selectedTab) {
+                    ScheduleHome().tag(0).tabItem { Label("课表", systemImage: "calendar") }
+                    RecordsView(feature: .grades).tag(1).tabItem { Label("成绩", systemImage: "chart.bar.xaxis") }
+                    RecordsView(feature: .exams).tag(2).tabItem { Label("考试", systemImage: "pencil.and.list.clipboard") }
+                    AccountView().tag(3).tabItem { Label("我的", systemImage: "person.crop.circle") }
+                }.onOpenURL { url in if url.scheme == "lanke", url.host == "timetable" { selectedTab = 0 } }
             }
         }
     }
