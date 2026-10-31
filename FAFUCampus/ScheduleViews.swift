@@ -293,8 +293,8 @@ struct LessonRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack { Text(lesson.name).font(.headline); Spacer(); Text("@" + (lesson.room.isEmpty ? "教室待确认" : lesson.room)).font(.subheadline) }
             Text(status).font(.subheadline).monospacedDigit()
-        }.foregroundStyle(.black).padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background(phase == .soon ? LessonColors.soon : (phase == .active ? LessonColors.active : .white), in: RoundedRectangle(cornerRadius: 18))
+        }.foregroundStyle(phase == .soon || phase == .active ? Color.black : Color.primary).padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(phase == .soon ? LessonColors.soon : (phase == .active ? LessonColors.active : Palette.card), in: RoundedRectangle(cornerRadius: 18))
     }
     private var status: String {
         switch phase {

@@ -28,6 +28,8 @@ import CampusCore
     }
     private func automaticLogin() async throws {
         guard rememberLogin, let value = credentials.load() else { throw CampusError.sessionExpired }
+        var succeeded = false
+        defer { if !succeeded { needsLogin = true } }
         let challenge = try await client.prepareLogin()
         let recognized = await Task.detached { () -> String? in
             let request = VNRecognizeTextRequest()
@@ -49,7 +51,21 @@ import CampusCore
         guard snapshot == nil || snapshot?.student.account == student.account else { throw CampusError.sessionExpired }
         if snapshot == nil { snapshot = CampusSnapshot(student: student) }
         mode = .online; needsLogin = false
-        try await saveSession()
+        try await saveSession(); succeeded = true
+    }
+    func authenticatedPortalSession() async -> SavedSession? {
+        guard mode != .demo else { return nil }
+        if !busy {
+            busy = true
+            defer { busy = false }
+            do {
+                if let saved = try vault.load() { try await client.restore(saved) }
+                do { _ = try await client.validateSession() }
+                catch CampusError.sessionExpired { try await automaticLogin() }
+                try await saveSession()
+            } catch { /* The original portal remains available for manual authentication. */ }
+        }
+        return await portalSession()
     }
     func portalSession() async -> SavedSession? {
         guard mode != .demo else { return nil }

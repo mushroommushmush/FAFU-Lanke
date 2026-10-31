@@ -26,7 +26,7 @@ import CampusCore
     func prepare(store: CampusStore) async {
         guard !prepared else { return }
         prepared = true; self.store = store
-        let saved = await store.portalSession()
+        let saved = await store.authenticatedPortalSession()
         let owner = saved?.student.account ?? "guest"
         if UserDefaults.standard.string(forKey: "lanke.portal.owner") != owner { await Self.clearWebsite() }
         UserDefaults.standard.set(owner, forKey: "lanke.portal.owner")
@@ -41,13 +41,11 @@ import CampusCore
             }
             let client = AcademicClient()
             if (try? await client.restore(saved)) != nil, let url = try? await client.portalURL() { target = url }
-        } else if let last = UserDefaults.standard.string(forKey: "lanke.portal.url"),
-                  let url = URL(string: last), AcademicClient.isAllowed(url) { target = url }
+        }
         webView.load(URLRequest(url: target))
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let url = webView.url, AcademicClient.isAllowed(url) else { return }
-        UserDefaults.standard.set(url.absoluteString, forKey: "lanke.portal.url")
         Task {
             guard let store else { return }
             let old = await store.portalSession()

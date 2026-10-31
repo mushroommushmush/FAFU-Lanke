@@ -1,4 +1,4 @@
-name: Preview home widgets
+name: Preview app layout
 on:
   workflow_dispatch:
   push:
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Home-widget-design-preview
+          name: App-layout-preview
           path: build/layout-preview
           if-no-files-found: warn
           retention-days: 7
