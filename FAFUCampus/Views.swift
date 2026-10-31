@@ -25,9 +25,9 @@ struct RootView: View {
                     Tab("我的", systemImage: "person.crop.circle", value: 3) { AccountView() }
                     Tab("搜索", systemImage: "magnifyingglass", value: 4, role: .search) {
                         UniversalSearchView(query: $searchText, selectTab: { selectedTab = $0 })
+                            .searchable(text: $searchText, prompt: "搜索功能、课程和信息")
                     }
                 }
-                .searchable(text: $searchText, prompt: "搜索功能、课程和信息")
                 .tabViewSearchActivation(.searchTabSelection)
                 .tabBarMinimizeBehavior(.onScrollDown)
                 .onOpenURL { url in if url.scheme == "lanke", url.host == "timetable" { selectedTab = 0 } }
