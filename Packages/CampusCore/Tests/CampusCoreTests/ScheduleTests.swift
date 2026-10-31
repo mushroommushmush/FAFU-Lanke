@@ -2,6 +2,19 @@ import XCTest
 @testable import CampusCore
 
 final class ScheduleTests: XCTestCase {
+    func testClassroomIgnoresChangeIdentifiers() {
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "禧 103", "(换0420)"]), "禧103")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "禧103", "(换0410)、(换0369)"]), "禧103")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "桃1-137"]), "桃1-137")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "(换0420)"]), "")
+    }
+    func testRelativeUpdateAge() {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        XCTAssertEqual(SchoolSchedule.updateAge(now.addingTimeInterval(-120), now: now), "更新于2分钟前")
+        XCTAssertEqual(SchoolSchedule.updateAge(now.addingTimeInterval(-86400), now: now), "更新于1天前")
+        XCTAssertEqual(SchoolSchedule.updateAge(now.addingTimeInterval(-31 * 86400), now: now), "更新于很久之前")
+        XCTAssertEqual(SchoolSchedule.updateAge(now.addingTimeInterval(60), now: now), "更新于0分钟前")
+    }
     func testWeekAndTimezone() {
         XCTAssertEqual(SchoolSchedule.week(on: SchoolSchedule.date(2026, 10, 31), beginning: SchoolSchedule.date(2026, 8, 31)), 9)
         XCTAssertEqual(SchoolSchedule.week(on: SchoolSchedule.date(2026, 8, 30), beginning: SchoolSchedule.date(2026, 8, 31)), 0)

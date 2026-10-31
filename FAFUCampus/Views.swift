@@ -95,11 +95,10 @@ struct StatusStrip: View {
     @EnvironmentObject var store: CampusStore
     let date: Date?
     var body: some View {
-        HStack(alignment: .top) {
-            Spacer()
-            if let date { Text("更新于 \(date.formatted(date: .abbreviated, time: .shortened))").multilineTextAlignment(.trailing) }
-            else { Text("尚未获取") }
-        }.font(.caption)
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            Text(date.map { SchoolSchedule.updateAge($0, now: context.date) } ?? "尚未获取")
+                .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
@@ -210,7 +209,7 @@ struct RecordsView: View {
                     }
                 }.padding(20)
             }
-            .background(Palette.background).navigationTitle(feature == .grades ? "我的成绩" : "考试安排")
+            .background(Palette.background).navigationTitle(feature == .grades ? "我的成绩" : "考试安排").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showSearch) { RecordsSearchView(records: filtered, title: feature.rawValue) }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {

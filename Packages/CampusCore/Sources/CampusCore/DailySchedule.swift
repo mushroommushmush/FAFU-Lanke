@@ -26,6 +26,23 @@ public enum SchoolSchedule {
         return c
     }
     public static let starts = [480, 530, 595, 645, 695, 840, 890, 950, 1000, 1105, 1155, 1205]
+    public static func classroom(in lines: [String]) -> String {
+        for line in lines.reversed() {
+            // Course-change identifiers such as (换0420) are not room names.
+            let cleaned = line.replacingOccurrences(of: "[（(]换[^）)]*[）)]", with: "", options: .regularExpression)
+            let rooms = matches("(?<![\\p{Han}0-9])([\\p{Han}]\\s*[0-9]+(?:[-－][0-9]+)?)", cleaned)
+            if let room = rooms.map({ $0[1] }).first(where: { !["换", "第", "周", "节"].contains(String($0.prefix(1))) }) {
+                return room.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+            }
+        }
+        return ""
+    }
+    public static func updateAge(_ date: Date, now: Date) -> String {
+        let age = max(0, now.timeIntervalSince(date))
+        if age > 30 * 86400 { return "更新于很久之前" }
+        if age >= 86400 { return "更新于\(Int(age / 86400))天前" }
+        return "更新于\(Int(age / 60))分钟前"
+    }
     public static func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
         calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }
@@ -76,7 +93,7 @@ public enum SchoolSchedule {
                 guard let first = numbers.min(), let last = numbers.max(), first >= 1, last <= 12 else { continue }
                 let next = offset + 1 < scheduleIndices.count ? scheduleIndices[offset + 1] - 1 : lines.count
                 let tail = index + 1 < next ? Array(lines[(index + 1)..<next]) : []
-                let room = tail.count >= 2 ? tail.last! : ""
+                let room = classroom(in: tail)
                 let start = calendar.date(byAdding: .minute, value: starts[first - 1], to: midnight)!
                 let end = calendar.date(byAdding: .minute, value: starts[last - 1] + 45, to: midnight)!
                 guard end > start else { continue }

@@ -1,61 +1,73 @@
 import WidgetKit
 import SwiftUI
 import ActivityKit
-import AppIntents
-
-struct StopLessonActivity: LiveActivityIntent {
-    static var title: LocalizedStringResource = "结束课程实时活动"
-    func perform() async throws -> some IntentResult {
-        for activity in Activity<LessonActivity>.activities { await activity.end(nil, dismissalPolicy: .immediate) }
-        return .result()
-    }
-}
 
 private let lessonYellow = Color(red: 250/255, green: 192/255, blue: 61/255)
 private let lessonGreen = Color(red: 192/255, green: 214/255, blue: 150/255)
 
-struct ActivityPart: View {
+private func clock(_ date: Date) -> String {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+    let c = calendar.dateComponents([.hour, .minute], from: date)
+    return String(format: "%d:%02d", c.hour!, c.minute!)
+}
+private func courseTime(_ state: LessonActivity.ContentState) -> String { clock(state.start) + "-" + clock(state.end) }
+
+struct LessonTimer: View {
     let state: LessonActivity.ContentState
-    let leading: Bool
+    let active: Bool
     var body: some View {
-        TimelineView(.periodic(from: state.start.addingTimeInterval(-900), by: 30)) { context in
-            let active = context.date >= state.start
-            Group {
-                if context.date >= state.end { Text(leading ? String(state.name.prefix(4)) : "已下课") }
-                else if leading { Text(String(state.name.prefix(4))) }
-                else if active { Text(timerInterval: state.start...state.end, countsDown: true).monospacedDigit().frame(maxWidth: 65) }
-                else { Text(state.room.isEmpty ? "待确认" : state.room) }
-            }.font(.caption).foregroundStyle(active ? lessonGreen : lessonYellow).lineLimit(1)
-        }
+        Text(timerInterval: active ? state.start...state.end : state.start.addingTimeInterval(-900)...state.start,
+             countsDown: true, showsHours: false)
+            .monospacedDigit()
     }
 }
 
 struct LessonLiveWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LessonActivity.self) { context in
-            VStack(alignment: .leading, spacing: 8) {
-                Text(context.state.name).font(.headline)
-                HStack {
-                    Text("@" + context.state.room)
-                    Spacer()
-                    ActivityPart(state: context.state, leading: false)
+            let active = context.state.hasStarted || (context.isStale && Date() >= context.state.start)
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(context.state.name).font(.headline).lineLimit(2)
+                    Text("@" + (context.state.room.isEmpty ? "教室待确认" : context.state.room)).foregroundStyle(lessonYellow)
+                    Text(courseTime(context.state)).font(.subheadline)
                 }
-                Text(context.state.start, style: .time) + Text(" — ") + Text(context.state.end, style: .time)
-                Button(intent: StopLessonActivity()) { Label("结束", systemImage: "xmark.circle") }
-            }.padding().activityBackgroundTint(.black).activitySystemActionForegroundColor(.white).foregroundStyle(.white)
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 4) {
+                    LessonTimer(state: context.state, active: active)
+                        .font(.system(size: 36, weight: .light, design: .rounded))
+                        .frame(width: 130, alignment: .trailing).minimumScaleFactor(0.7)
+                    Text(active ? "距离下课还有" : "距离上课还有").font(.caption)
+                }.foregroundStyle(lessonGreen)
+            }.padding(18).activityBackgroundTint(.black).activitySystemActionForegroundColor(.white).foregroundStyle(.white)
         } dynamicIsland: { context in
-            DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) { Text(context.state.name).foregroundStyle(lessonGreen) }
-                DynamicIslandExpandedRegion(.trailing) { Text("@" + context.state.room).foregroundStyle(lessonYellow) }
+            let active = context.state.hasStarted || (context.isStale && Date() >= context.state.start)
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) { Text(context.state.name).font(.headline).foregroundStyle(lessonGreen).lineLimit(2) }
+                DynamicIslandExpandedRegion(.trailing) { Text("@" + context.state.room).foregroundStyle(lessonYellow).lineLimit(1) }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack { ActivityPart(state: context.state, leading: false); Spacer(); Button(intent: StopLessonActivity()) { Text("结束") } }
+                    HStack {
+                        Text(courseTime(context.state)).font(.subheadline)
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 3) {
+                            LessonTimer(state: context.state, active: active).font(.system(size: 28, weight: .light, design: .rounded)).frame(width: 110, alignment: .trailing)
+                            Text(active ? "距离下课还有" : "距离上课还有").font(.caption)
+                        }.foregroundStyle(lessonGreen)
+                    }.padding(.top, 4)
                 }
             } compactLeading: {
-                ActivityPart(state: context.state, leading: true)
+                Text(String(context.state.name.prefix(4))).font(.caption).lineLimit(1)
+                    .foregroundStyle(active ? lessonGreen : lessonYellow)
             } compactTrailing: {
-                ActivityPart(state: context.state, leading: false)
+                Group {
+                    if active { LessonTimer(state: context.state, active: true) }
+                    else { Text(context.state.room.isEmpty ? "待确认" : context.state.room) }
+                }.font(.caption2).lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(width: 46, alignment: .trailing).clipped()
+                    .foregroundStyle(active ? lessonGreen : lessonYellow)
             } minimal: {
-                Image(systemName: "book.closed.fill").foregroundStyle(lessonGreen)
+                Image(systemName: "book.closed.fill").foregroundStyle(active ? lessonGreen : lessonYellow)
             }
         }
     }

@@ -25,10 +25,16 @@ import Combine
         message = nil
         for lesson in desired {
             let state = LessonActivity.ContentState(name: lesson.name, room: lesson.room, start: lesson.start, end: lesson.end, hasStarted: now >= lesson.start)
-            let content = ActivityContent(state: state, staleDate: lesson.end)
+            let content = ActivityContent(state: state, staleDate: now < lesson.start ? lesson.start : lesson.end)
             if let activity = Activity<LessonActivity>.activities.first(where: { $0.attributes.lessonID == lesson.id && $0.attributes.account == account }) {
-                if activity.content.state != state { await activity.update(content) }
-                continue
+                if activity.content.state.start != state.start || activity.content.state.end != state.end {
+                    // A pending activity's scheduled start must follow the edited lesson time.
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                    requested.remove(lesson.id)
+                } else {
+                    if activity.content.state != state { await activity.update(content) }
+                    continue
+                }
             }
             let attributes = LessonActivity(lessonID: lesson.id, account: account)
             // Respect a person's decision to dismiss an activity; do not recreate it every tick.
@@ -56,8 +62,8 @@ struct ActivityCoordinator: View {
     @EnvironmentObject var planner: Planner
     @EnvironmentObject var activities: LessonActivityManager
     @Environment(\.scenePhase) private var phase
-    @AppStorage("lanke.live.enabled") private var enabled = false
-    private let timer = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
+    @AppStorage("lanke.live.enabled.v2") private var enabled = true
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     var body: some View {
         Color.clear.frame(width: 0, height: 0)
             .onReceive(timer) { _ in update() }

@@ -40,6 +40,10 @@ import Combine
         return (imported + manual).filter { !saved.hidden.contains($0.id) }.sorted { $0.start < $1.start }
     }
     func add(_ lesson: Lesson) { saved.manual.append(lesson); persist() }
+    func edit(_ lesson: Lesson) {
+        guard let index = saved.manual.firstIndex(where: { $0.id == lesson.id }) else { return }
+        saved.manual[index] = lesson; persist()
+    }
     func remove(_ lesson: Lesson) { saved.hidden.insert(lesson.id); persist() }
 }
 
@@ -132,7 +136,7 @@ struct ScheduleHome: View {
                     }
                 }.padding(16)
             }
-            .background(Palette.background).navigationTitle("我的课表")
+            .background(Palette.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程")
@@ -241,6 +245,7 @@ struct LessonRow: View {
 
 struct AddLessonView: View {
     let day: Date
+    var existing: Lesson? = nil
     @EnvironmentObject var planner: Planner
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -254,14 +259,18 @@ struct AddLessonView: View {
                 TextField("教室（如创211）", text: $room)
                 DatePicker("上课", selection: $start)
                 DatePicker("下课", selection: $end, in: start...)
-            }.navigationTitle("添加课程").navigationBarTitleDisplayMode(.inline)
+            }.navigationTitle(existing == nil ? "添加课程" : "修改课程").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") {
-                        planner.add(Lesson(name: name.trimmingCharacters(in: .whitespacesAndNewlines), room: room.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end)); dismiss()
+                        let lesson = Lesson(id: existing?.id ?? UUID().uuidString, name: name.trimmingCharacters(in: .whitespacesAndNewlines), room: room.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end)
+                        if existing == nil { planner.add(lesson) } else { planner.edit(lesson) }; dismiss()
                     }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || end <= start) }
                 }
-                .onAppear { start = SchoolSchedule.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: day)!; end = start.addingTimeInterval(2700) }
+                .onAppear {
+                    if let existing { name = existing.name; room = existing.room; start = existing.start; end = existing.end }
+                    else { start = SchoolSchedule.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: day)!; end = start.addingTimeInterval(2700) }
+                }
                 .onChange(of: start) { _, value in if end <= value { end = value.addingTimeInterval(2700) } }
         }.environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
@@ -272,17 +281,21 @@ struct LessonDetail: View {
     @EnvironmentObject var planner: Planner
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
+    @State private var editing = false
+    private var current: Lesson { planner.saved.manual.first(where: { $0.id == lesson.id }) ?? lesson }
     var body: some View {
         NavigationStack {
             Form {
-                LabeledContent("课程", value: lesson.name)
-                LabeledContent("教室", value: lesson.room.isEmpty ? "待确认" : lesson.room)
-                LabeledContent("上课", value: lesson.start.formatted(date: .abbreviated, time: .shortened))
-                LabeledContent("下课", value: lesson.end.formatted(date: .abbreviated, time: .shortened))
-                if !lesson.detail.isEmpty { Text(lesson.detail).textSelection(.enabled) }
+                LabeledContent("课程", value: current.name)
+                LabeledContent("教室", value: current.room.isEmpty ? "待确认" : current.room)
+                LabeledContent("上课", value: current.start.formatted(date: .abbreviated, time: .shortened))
+                LabeledContent("下课", value: current.end.formatted(date: .abbreviated, time: .shortened))
+                if !current.detail.isEmpty { Text(current.detail).textSelection(.enabled) }
+                if lesson.manual { Button("修改课程信息") { editing = true } }
                 Button("从当日课程表删除", role: .destructive) { confirm = true }
             }.navigationTitle("课程详情").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+                .sheet(isPresented: $editing) { AddLessonView(day: current.start, existing: current) }
                 .confirmationDialog("仅删除本机当天这堂课，不修改学校课表。", isPresented: $confirm, titleVisibility: .visible) {
                     Button("删除当天课程", role: .destructive) { planner.remove(lesson); dismiss() }
                 }
@@ -295,7 +308,7 @@ struct ScheduleSettings: View {
     @EnvironmentObject var planner: Planner
     @EnvironmentObject var store: CampusStore
     @AppStorage("lanke.schedule.grid") private var grid = false
-    @AppStorage("lanke.live.enabled") private var live = false
+    @AppStorage("lanke.live.enabled.v2") private var live = true
     var body: some View {
         Form {
             Section("显示") { Picker("课表模式", selection: $grid) { Text("列表").tag(false); Text("表格").tag(true) }.pickerStyle(.segmented) }
@@ -321,11 +334,10 @@ struct ScheduleSettings: View {
             Section("实时活动") {
                 Toggle("课程实时活动", isOn: $live)
                 if let message = activities.message { Text(message).font(.caption).foregroundStyle(.orange) }
-                Text("打开应用后预约当天最近两堂课。课前15分钟启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可点活动中的“结束”，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
+                Text("打开应用后预约当天最近两堂课。课前15分钟启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可在系统中移除活动，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
             }
             Section { Button("恢复已删除的课程") { planner.saved.hidden = []; planner.persist() } }
         }.navigationTitle("课表设置").navigationBarTitleDisplayMode(.inline)
             .environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
 }
-
