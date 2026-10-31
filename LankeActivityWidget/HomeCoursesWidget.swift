@@ -34,12 +34,11 @@ struct CoursesProvider: TimelineProvider {
         catch { return CourseWidgetEntry(date: Date(), packet: nil, problem: "请打开览课检查小组件同步") }
     }
     func sample() -> CourseWidgetEntry {
-        let today = SchoolSchedule.calendar.startOfDay(for: Date())
-        let now = today.addingTimeInterval(7 * 3600 + 50 * 60)
+        let now = Date()
         let packet = HomeWidgetSnapshot(lessons: [
-            HomeWidgetLesson(id: "1", name: "计量经济学", room: "诚A601", start: today.addingTimeInterval(8*3600), end: today.addingTimeInterval(9*3600+35*60)),
-            HomeWidgetLesson(id: "2", name: "国际金融学", room: "田410", start: today.addingTimeInterval(9*3600+55*60), end: today.addingTimeInterval(11*3600+30*60)),
-            HomeWidgetLesson(id: "3", name: "农村金融学", room: "禧401", start: today.addingTimeInterval(14*3600), end: today.addingTimeInterval(15*3600+35*60))
+            HomeWidgetLesson(id: "1", name: "计量经济学", room: "诚A601", start: now.addingTimeInterval(600), end: now.addingTimeInterval(6300)),
+            HomeWidgetLesson(id: "2", name: "国际金融学", room: "田410", start: now.addingTimeInterval(7200), end: now.addingTimeInterval(12900)),
+            HomeWidgetLesson(id: "3", name: "农村金融学", room: "禧401", start: now.addingTimeInterval(14400), end: now.addingTimeInterval(20100))
         ], sourceUpdatedAt: now)
         return CourseWidgetEntry(date: now, packet: packet)
     }
@@ -158,3 +157,4 @@ struct HomeWidgetDesignPreview: View {
         }.background(Color(uiColor: .systemGroupedBackground))
     }
 }
+
