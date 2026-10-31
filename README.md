@@ -2,7 +2,9 @@
 
 原生 SwiftUI 应用，面向福建农林大学旧版教务系统。支持 iOS 17 及以上，包含登录、学期课表、成绩、考试安排、离线记录和学校原网页入口。
 
-**交付状态：0.1.0（构建 3）源码更新。旧版已由用户云端编译和安装；本次新增会话恢复、Liquid Glass 和图标，尚待云端构建及真机验收。包含 26 项核心测试。源码压缩包不是 IPA。**
+**交付状态：0.2.0（构建4）。31项核心测试、模拟器编译、真机归档和IPA上传全部通过。真机界面及灵动岛仍待安装验证。**
+
+新增日期课表、列表/表格切换、手动课程、独立搜索及实时活动扩展。详见 [更新说明](UPDATE-0.2.0.md)。强制关闭应用后，不保证实时活动准时变色和结束。
 
 ## 你没有 Mac：这样使用
 
@@ -10,7 +12,7 @@
 
 1. 将项目解压到一个文件夹。项目根目录应同时包含 `FAFUCampus.xcodeproj`、`FAFUCampus`、`Packages` 和 `.github`。
 2. 用自己的 GitHub 账号创建仓库，将**项目文件夹内部的内容**提交到默认分支。不要把整个项目再多包一层目录；`.github/workflows/build-ios.yml` 必须在仓库根目录下。可以用 GitHub Desktop 新建本地仓库，再复制这些文件、提交并发布；必须包含 `.github`。
-3. 在仓库网页打开 **Actions → Build iOS app → Run workflow**。该流程只手动运行，不会在你上传每个文件时反复构建。
+3. 在仓库网页打开 **Actions → Build iOS app → Run workflow**。main 分支源码更新会自动构建，也支持手动运行。
 4. 流程会依次运行核心测试、编译模拟器版本、归档 iPhone 版本，再打包 IPA。全部成功后，在运行页面底部 **Artifacts** 下载 `FAFUCampus-unsigned-IPA`。
 5. 解压下载的 artifact，得到 `FAFUCampus-unsigned.ipa`。它还没有 Apple 签名，不能直接点开安装。
 6. 在 Windows 从 [Sideloadly 官方网站](https://sideloadly.io/)下载工具，按其说明安装所需 Apple 驱动组件。用数据线连接 iPhone，在手机上选择信任电脑。
@@ -98,6 +100,6 @@ swift test --package-path Packages/CampusCore
 - 登录页移除用户圈出的三段介绍；关于内容移到“我的 → 关于览课”，第一行为“版本 0.1.0”。
 - Xcode 26+ 构建启用系统 Liquid Glass 导航和标签栏；登录按钮采用 glassProminent，旧系统及减少透明度时回退。
 - AppIcon.icon 为分层图标。Scripts/RenderIcon.swift 在 Mac 构建前渲染与参考图相同的 leaf.fill 图样，并生成浅色、深色及着色后备图标。光照由系统生成，不在图片里绘制假玻璃。
-- 云端运行环境改为 macos-26，并检查 iOS SDK >= 26。更新时必须一并替换工作流及 Scripts 文件夹。
+- 云端使用 macos-15-intel，并通过 DEVELOPER_DIR 明确选择 Xcode 26.3，检查 iOS SDK >= 26。更新时必须一并替换工作流及 Scripts 文件夹。
 
 参考：[Apple Liquid Glass](https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass)、[Icon Composer](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)。
