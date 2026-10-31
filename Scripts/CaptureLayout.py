@@ -8,7 +8,7 @@ out.mkdir(parents=True, exist_ok=True)
 devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
 candidates = [d for runtime, rows in devices.items() if 'iOS-26' in runtime for d in rows if d.get('isAvailable')]
 chosen = []
-for family in ['iPhone', 'iPad']:
+for family in ['iPhone']:
     rows = [d for d in candidates if d['name'].startswith(family)]
     rows.sort(key=lambda d: ('Air' not in d['name'], d['name']))
     if rows:
