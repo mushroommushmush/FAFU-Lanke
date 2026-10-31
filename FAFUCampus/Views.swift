@@ -102,6 +102,20 @@ struct StatusStrip: View {
     }
 }
 
+struct PageHeading: View {
+    let title: String
+    let date: Date?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.headline).lineLimit(1)
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                Text(date.map { SchoolSchedule.updateAge($0, now: context.date) } ?? "尚未获取")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }.accessibilityElement(children: .combine)
+    }
+}
+
 struct SemesterControls: View {
     let options: PageOptions
     let disabled: Bool
@@ -155,7 +169,6 @@ struct RecordsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    StatusStrip(date: report?.fetchedAt)
                     if store.needsLogin {
                         Button("重新登录以更新数据") { Task { await store.returnToLogin() } }.disabled(store.busy)
                     } else if store.hasSavedSession && !store.isOnline {
@@ -209,9 +222,10 @@ struct RecordsView: View {
                     }
                 }.padding(20)
             }
-            .background(Palette.background).navigationTitle(feature == .grades ? "我的成绩" : "考试安排").navigationBarTitleDisplayMode(.inline)
+            .background(Palette.background).navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showSearch) { RecordsSearchView(records: filtered, title: feature.rawValue) }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { PageHeading(title: feature == .grades ? "我的成绩" : "考试安排", date: report?.fetchedAt) }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
                         .accessibilityLabel("搜索\(feature.rawValue)")

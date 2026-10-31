@@ -19,7 +19,31 @@ struct LessonTimer: View {
     var body: some View {
         Text(timerInterval: active ? state.start...state.end : state.start.addingTimeInterval(-900)...state.start,
              countsDown: true, showsHours: false)
-            .monospacedDigit()
+            .monospacedDigit().multilineTextAlignment(.trailing)
+    }
+}
+
+private struct LessonSummary: View {
+    let state: LessonActivity.ContentState
+    let active: Bool
+    let expanded: Bool
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                (Text(state.name).foregroundColor(.white) + Text(" @" + (state.room.isEmpty ? "待确认" : state.room)).foregroundColor(lessonYellow))
+                    .font(expanded ? .subheadline.weight(.semibold) : .headline)
+                    .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                LessonTimer(state: state, active: active)
+                    .font(.system(size: expanded ? 30 : 36, weight: .light, design: .rounded))
+                    .frame(width: expanded ? 96 : 112, alignment: .trailing)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(active ? lessonGreen : lessonYellow)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(courseTime(state)).frame(maxWidth: .infinity, alignment: .leading)
+                Text(active ? "距下课还有" : "距上课还有").multilineTextAlignment(.trailing)
+            }.font(.caption).foregroundStyle(.white)
+        }
     }
 }
 
@@ -27,47 +51,16 @@ struct LessonLiveWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LessonActivity.self) { context in
             let active = context.state.hasStarted || (context.isStale && Date() >= context.state.start)
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(context.state.name).font(.headline).lineLimit(2)
-                    Text("@" + (context.state.room.isEmpty ? "教室待确认" : context.state.room)).foregroundStyle(lessonYellow)
-                    Text(courseTime(context.state)).font(.subheadline)
-                }
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 4) {
-                    LessonTimer(state: context.state, active: active)
-                        .font(.system(size: 36, weight: .light, design: .rounded))
-                        .frame(width: 112, alignment: .trailing).minimumScaleFactor(0.7)
-                        .foregroundStyle(active ? lessonGreen : lessonYellow)
-                    Text(active ? "距离下课还有" : "距离上课还有").font(.caption)
-                }.foregroundStyle(lessonGreen)
-            }.padding(14).activityBackgroundTint(.black).activitySystemActionForegroundColor(.white).foregroundStyle(.white)
+            LessonSummary(state: context.state, active: active, expanded: false)
+                .padding(.horizontal, 24).padding(.vertical, 20)
+                .activityBackgroundTint(.black).activitySystemActionForegroundColor(.white).foregroundStyle(.white)
         } dynamicIsland: { context in
             let active = context.state.hasStarted || (context.isStale && Date() >= context.state.start)
             return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    Text(String(context.state.name.prefix(4))).font(.caption.weight(.medium))
-                        .lineLimit(1).minimumScaleFactor(0.8).foregroundStyle(active ? lessonGreen : lessonYellow)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text("@" + (context.state.room.isEmpty ? "待确认" : context.state.room))
-                        .font(.caption).lineLimit(1).minimumScaleFactor(0.75)
-                        .foregroundStyle(lessonYellow)
-                }
+                // Keep every expanded element below the camera, out of the rounded upper wings.
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(context.state.name).font(.subheadline.weight(.semibold)).lineLimit(2)
-                            Text(courseTime(context.state)).font(.caption).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .trailing, spacing: 4) {
-                            LessonTimer(state: context.state, active: active)
-                                .font(.system(size: 28, weight: .light, design: .rounded))
-                                .frame(width: 96, alignment: .trailing).minimumScaleFactor(0.75)
-                                .foregroundStyle(active ? lessonGreen : lessonYellow)
-                            Text(active ? "距离下课还有" : "距离上课还有").font(.caption2).foregroundStyle(lessonGreen)
-                        }
-                    }.padding(.top, 6)
+                    LessonSummary(state: context.state, active: active, expanded: true)
+                        .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 12)
                 }
             } compactLeading: {
                 Text(String(context.state.name.prefix(4))).font(.caption).lineLimit(1)
@@ -82,7 +75,7 @@ struct LessonLiveWidget: Widget {
             } minimal: {
                 Image(systemName: "book.closed.fill").foregroundStyle(active ? lessonGreen : lessonYellow)
             }
-            .contentMargins(.all, 14, for: .expanded)
+            .contentMargins(.all, 24, for: .expanded)
             .contentMargins(.leading, 8, for: .compactLeading)
             .contentMargins(.trailing, 8, for: .compactTrailing)
         }

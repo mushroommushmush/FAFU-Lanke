@@ -57,6 +57,93 @@ enum LessonColors {
     }
 }
 
+struct ScheduleQueryBar: View {
+    let options: PageOptions?
+    let disabled: Bool
+    @Binding var day: Date
+    let beginning: Date
+    let query: (Semester) -> Void
+    @State private var year = ""
+    @State private var term = ""
+    var body: some View {
+        HStack(spacing: 6) {
+            if let options {
+                Menu {
+                    ForEach(options.years) { option in Button(option.label) { year = option.value } }
+                } label: {
+                    Text(year.split(separator: "-").map { String($0.suffix(2)) }.joined(separator: "–"))
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }.accessibilityLabel("选择学年")
+                Menu {
+                    ForEach(options.terms) { option in Button("第\(option.label)学期") { term = option.value } }
+                } label: { Text("\(term)学期").lineLimit(1).minimumScaleFactor(0.7) }.accessibilityLabel("选择学期")
+            }
+            Spacer(minLength: 0)
+            Button("今天") { day = SchoolSchedule.calendar.startOfDay(for: Date()) }.font(.caption)
+            WeekGlassPicker(day: $day, beginning: beginning).zIndex(2)
+            Button("查询") { query(Semester(year: year, term: term)) }
+                .disabled(disabled || year.isEmpty || term.isEmpty).font(.caption)
+        }.font(.subheadline).buttonStyle(.plain).frame(minHeight: 40)
+            .task(id: options?.selected.title) { year = options?.selected.year ?? ""; term = options?.selected.term ?? "" }
+    }
+}
+
+private struct WeekGlassSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var opaque
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !opaque {
+            content.glassEffect(.regular.interactive(), in: .capsule)
+        } else { content.background(.regularMaterial, in: Capsule()) }
+    }
+}
+
+struct WeekGlassPicker: View {
+    @Binding var day: Date
+    let beginning: Date
+    @State private var anchor: Int?
+    @State private var preview: Int?
+    private var week: Int { SchoolSchedule.week(on: day, beginning: beginning) }
+    @ViewBuilder var body: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer { control }
+        } else { control }
+    }
+    private var control: some View {
+        Text("第\(week)周").font(.caption.weight(.semibold))
+            .frame(width: 66, height: 34).modifier(WeekGlassSurface())
+            .overlay {
+                if anchor != nil {
+                    HStack(spacing: 0) {
+                        ForEach(-1...1, id: \.self) { offset in
+                            let number = (preview ?? week) + offset
+                            Text((1...30).contains(number) ? "第\(number)周" : "")
+                                .font(.subheadline.weight(offset == 0 ? .semibold : .regular))
+                                .foregroundStyle(offset == 0 ? Palette.forest : .secondary)
+                                .frame(width: 66, height: 38)
+                                .background { if offset == 0 { Capsule().fill(.primary.opacity(0.06)).overlay(Capsule().strokeBorder(.primary.opacity(0.18), lineWidth: 1)) } }
+                        }
+                    }.padding(4).modifier(WeekGlassSurface()).transition(.scale(scale: 0.9).combined(with: .opacity))
+                }
+            }
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if anchor == nil { withAnimation(.snappy(duration: 0.18)) { anchor = week } }
+                    preview = max(1, min(30, (anchor ?? week) - Int((value.translation.width / 44).rounded())))
+                }
+                .onEnded { _ in
+                    choose(preview ?? week)
+                    withAnimation(.snappy(duration: 0.18)) { anchor = nil; preview = nil }
+                })
+            .contextMenu { ForEach(1...30, id: \.self) { value in Button("第\(value)周") { choose(value) } } }
+            .accessibilityLabel("第\(week)周，左右滑动调整")
+            .accessibilityAdjustableAction { direction in choose(week + (direction == .increment ? 1 : -1)) }
+    }
+    private func choose(_ value: Int) {
+        let target = max(1, min(30, value))
+        day = SchoolSchedule.calendar.date(byAdding: .day, value: (target - week) * 7, to: day) ?? day
+    }
+}
+
 struct ScheduleHome: View {
     @EnvironmentObject var store: CampusStore
     @EnvironmentObject var planner: Planner
@@ -74,21 +161,11 @@ struct ScheduleHome: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: grid ? 10 : 18) {
-                    StatusStrip(date: report?.fetchedAt)
                     if store.needsLogin { Button("重新登录以更新数据") { Task { await store.returnToLogin() } } }
-                    if let report {
-                        SemesterControls(options: report.options, disabled: store.busy || !store.isOnline) { value in
+                    ScheduleQueryBar(options: report?.options, disabled: store.busy || !store.isOnline,
+                        day: $day, beginning: planner.beginning(report)) { value in
                             Task { await store.refresh(.timetable, semester: value) }
                         }
-                    }
-                    HStack {
-                        Button { moveWeek(-1) } label: { Image(systemName: "chevron.left") }.accessibilityLabel("上一周")
-                        Spacer()
-                        Text("第\(SchoolSchedule.week(on: day, beginning: planner.beginning(report)))周").font(.headline)
-                        Button("今天") { day = SchoolSchedule.calendar.startOfDay(for: Date()) }
-                        Spacer()
-                        Button { moveWeek(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("下一周")
-                    }
                     if grid {
                         weekGrid
                         TimelineView(.periodic(from: .now, by: 15)) { context in
@@ -136,8 +213,9 @@ struct ScheduleHome: View {
                     }
                 }.padding(grid ? 12 : 16).padding(.bottom, grid ? 16 : 0)
             }
-            .background(Palette.background).navigationTitle("我的课表").navigationBarTitleDisplayMode(.inline)
+            .background(Palette.background).navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { PageHeading(title: "我的课表", date: report?.fetchedAt) }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程")
                     Button { Task { await store.refresh(.timetable, semester: report?.options.selected) } }
