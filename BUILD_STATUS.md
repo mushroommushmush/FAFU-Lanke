@@ -1,8 +1,8 @@
-# 0.2.1 验证状态
+# 0.2.2 验证状态
 
-- 33项核心测试由GitHub Actions执行通过。
-- iOS模拟器编译、iPhone/iPad归档、未签名IPA打包上传全部通过。
-- 构建提交：ecc86d8313f01410ccb0c35e95126453934edb38
-- 构建链接：https://github.com/mushroommushmush/FAFU-Lanke/actions/runs/41180460540
-- 尚未验证：真机视觉、签名后实时活动扩展、后台阶段切换。
-- 未解决：无服务器推送时，不能保证应用关闭后的实时活动准时切换与结束。参见UPDATE-0.2.1.md。
+- 34项核心测试、模拟器编译、真机归档与IPA上传全部通过。
+- 构建：https://github.com/mushroommushmush/FAFU-Lanke/actions/runs/41183313519
+- 提交：075f14059f46e105f9880fb3ea038000e755f998
+- 已检查工程、资源引用与结构，七列宽度计算在320-1024点容器内无横向溢出。
+- 尚未完成：iPhone Air真机视觉验收、灵动岛各状态截图验证。编译通过不等于所有设备和字体设置均无遮挡。
+- Sideloadly后台实时活动生命周期限制保持不变，详见UPDATE-0.2.1.md。
