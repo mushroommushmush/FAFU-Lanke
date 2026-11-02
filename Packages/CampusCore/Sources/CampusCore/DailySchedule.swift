@@ -26,6 +26,13 @@ public enum SchoolSchedule {
         return c
     }
     public static let starts = [480, 530, 595, 645, 695, 840, 890, 950, 1000, 1105, 1155, 1205]
+    public static func interval(on date: Date, periods: Set<Int>, starts: [Int] = starts) -> DateInterval? {
+        guard let first = periods.min(), let last = periods.max(), first >= 1, last <= starts.count else { return nil }
+        let base = calendar.startOfDay(for: date)
+        let start = base.addingTimeInterval(Double(starts[first - 1]) * 60)
+        let end = base.addingTimeInterval(Double(starts[last - 1] + 45) * 60)
+        return end > start ? DateInterval(start: start, end: end) : nil
+    }
     public static func classroom(in lines: [String]) -> String {
         for line in lines.reversed() {
             // Course-change identifiers such as (换0420) are not room names.

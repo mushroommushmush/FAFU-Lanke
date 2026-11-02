@@ -315,12 +315,10 @@ struct AddLessonView: View {
     @State private var start = Date()
     @State private var end = Date().addingTimeInterval(2700)
     @State private var byPeriod = false
-    @State private var periods: Set<Int> = [1, 2]
-    private func applyPeriods() {
-        guard byPeriod, let first = periods.min(), let last = periods.max() else { return }
-        let base = SchoolSchedule.calendar.startOfDay(for: start)
-        start = base.addingTimeInterval(Double(planner.saved.starts[first - 1]) * 60)
-        end = base.addingTimeInterval(Double(planner.saved.starts[last - 1] + 45) * 60)
+    @State private var periods: Set<Int> = []
+    private var selectedInterval: DateInterval? {
+        if byPeriod { return SchoolSchedule.interval(on: start, periods: periods, starts: planner.saved.starts) }
+        return end > start ? DateInterval(start: start, end: end) : nil
     }
     var body: some View {
         NavigationStack {
@@ -335,13 +333,16 @@ struct AddLessonView: View {
                 Toggle("按节次设置时间", isOn: $byPeriod)
                 if byPeriod {
                     DatePicker("日期", selection: $start, displayedComponents: .date)
-                    Section("勾选连续节次") {
+                    Section("选择节次") {
                         ForEach(1...12, id: \.self) { number in
                             Toggle("第\(number)节", isOn: Binding(get: { periods.contains(number) }, set: { selected in
-                                if selected { periods.insert(number) } else { periods.remove(number) }; applyPeriods()
+                                if selected { periods.insert(number) } else { periods.remove(number) }
                             }))
                         }
-                        Text("按首节开始、末节结束，中间包含课间休息。").font(.caption)
+                        Text("按已选首节开始、末节结束，中间包含课间休息。").font(.caption)
+                        if let interval = selectedInterval {
+                            LabeledContent("课程时间", value: interval.start.formatted(date: .omitted, time: .shortened) + "–" + interval.end.formatted(date: .omitted, time: .shortened))
+                        } else { Text("请至少选择一节课").foregroundStyle(.secondary) }
                     }
                 } else {
                     DatePicker("上课", selection: $start)
@@ -351,16 +352,16 @@ struct AddLessonView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") {
-                        let lesson = Lesson(id: existing?.id ?? UUID().uuidString, name: name.trimmingCharacters(in: .whitespacesAndNewlines), room: room.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end)
+                        guard let interval = selectedInterval else { return }
+                        let lesson = Lesson(id: existing?.id ?? UUID().uuidString, name: name.trimmingCharacters(in: .whitespacesAndNewlines), room: room.trimmingCharacters(in: .whitespacesAndNewlines), start: interval.start, end: interval.end)
                         if existing == nil { planner.add(lesson) } else { planner.edit(lesson) }; dismiss()
-                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || end <= start || (byPeriod && (periods.isEmpty || periods.count != (periods.max()! - periods.min()! + 1)))) }
+                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedInterval == nil) }
                 }
                 .onAppear {
                     if let existing { name = existing.name; room = existing.room; start = existing.start; end = existing.end }
                     else { start = SchoolSchedule.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: day)!; end = start.addingTimeInterval(2700) }
                 }
-                .onChange(of: byPeriod) { _, _ in applyPeriods() }
-                .onChange(of: start) { _, value in if byPeriod { applyPeriods() } else if end <= value { end = value.addingTimeInterval(2700) } }
+                .onChange(of: start) { _, value in if !byPeriod && end <= value { end = value.addingTimeInterval(2700) } }
         }.environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
 }

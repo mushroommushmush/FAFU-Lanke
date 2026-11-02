@@ -292,7 +292,7 @@ private func gradeColor(_ text: String) -> Color {
     if grade >= 90 { return Palette.forest }
     if grade >= 80 { return LessonColors.soon }
     if grade >= 70 { return .purple }
-    return .primary
+    return .blue
 }
 
 struct RecordDetailView: View {
