@@ -2,6 +2,16 @@ name: Build iOS app
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Mac build machine (standard public runners)'
+        type: choice
+        default: macos-26-intel
+        options:
+          - macos-26-intel
+          - macos-15-intel
+          - macos-26
+          - macos-15
   push:
     branches: [main]
     paths:
@@ -21,7 +31,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner || 'macos-26-intel' }}
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
@@ -78,7 +88,8 @@ jobs:
           retention-days: 7
 
   layout:
-    runs-on: macos-26
+    needs: build
+    runs-on: ${{ inputs.runner || 'macos-26-intel' }}
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
