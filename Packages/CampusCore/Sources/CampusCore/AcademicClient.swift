@@ -22,6 +22,8 @@ public actor AcademicClient {
     private var loginURL: URL?
     private var loginParameters: [String: String]?
     private var student: Student?
+    private var professionalState: ProfessionalPage?
+    private var professionalURL: URL?
 
     private let configuration: URLSessionConfiguration
     public init(configuration: URLSessionConfiguration = .ephemeral) {
@@ -47,7 +49,7 @@ public actor AcademicClient {
         let alphabet = Array("abcdefghijklmnopqrstuvwxyz12345")
         let token = String((0..<24).map { _ in alphabet.randomElement()! })
         baseURL = URL(string: "http://\(Self.host)/(\(token))/")
-        loginURL = nil; loginParameters = nil; student = nil
+        loginURL = nil; loginParameters = nil; student = nil; professionalState = nil; professionalURL = nil
     }
     public func savedSession() -> SavedSession? {
         guard let baseURL, let student else { return nil }
@@ -77,7 +79,7 @@ public actor AcademicClient {
     }
     public func signOut() {
         session?.invalidateAndCancel(); session = nil
-        baseURL = nil; loginURL = nil; loginParameters = nil; student = nil
+        baseURL = nil; loginURL = nil; loginParameters = nil; student = nil; professionalState = nil; professionalURL = nil
     }
     private func request(_ url: URL, fields: [String: String]? = nil, referer: URL? = nil) async throws -> (Data, HTTPURLResponse) {
         guard Self.isAllowed(url), let session else { throw CampusError.invalidDestination }
@@ -188,6 +190,37 @@ public actor AcademicClient {
             }
         }
         return pageHTML
+    }
+    public func professionalPage(changing key: String? = nil, value: String? = nil) async throws -> ProfessionalPage {
+        let initial = try pageURL("tjkbcx.aspx", code: "N121601")
+        var fields: [String: String]?
+        var target = initial
+        if let key {
+            guard let state = professionalState, let currentURL = professionalURL,
+                  ProfessionalPage.keys.contains(key), let value,
+                  state.options[key]?.contains(where: { $0.value == value }) == true else {
+                throw CampusError.message("选项已经变化，请重新打开专业课表选择。")
+            }
+            target = state.action.isEmpty ? currentURL : (URL(string: state.action, relativeTo: currentURL)?.absoluteURL ?? initial)
+            guard Self.isAllowed(target) else { throw CampusError.invalidDestination }
+            var next = state.fields
+            next[key] = value; next["__EVENTTARGET"] = key; next["__EVENTARGUMENT"] = ""
+            fields = next
+        }
+        let result = try await request(target, fields: fields, referer: professionalURL ?? pageURL("xs_main.aspx"))
+        let page = try HTMLParser.professional(LegacyEncoding.decode(result.0, charset: result.1.textEncodingName))
+        professionalState = page; professionalURL = result.1.url ?? target
+        return page
+    }
+    public func loadProfessional(selection: [String: String]) async throws -> ProfessionalPage {
+        var page = try await professionalPage()
+        for key in ProfessionalPage.keys {
+            guard let value = selection[key], page.options[key]?.contains(where: { $0.value == value }) == true else {
+                throw CampusError.message("学校的专业课表选项已变化，请重新选择。")
+            }
+            if page.selected[key] != value { page = try await professionalPage(changing: key, value: value) }
+        }
+        return page
     }
     public func fetchTimetable(semester: Semester? = nil) async throws -> TimetableReport {
         let page = try await semesterPage("xskbcx.aspx", code: "N121602", semester: semester)

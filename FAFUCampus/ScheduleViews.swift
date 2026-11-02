@@ -109,7 +109,12 @@ struct WeekGlassPicker: View {
 
 struct ScheduleHome: View {
     @EnvironmentObject var store: CampusStore
-    @EnvironmentObject var planner: Planner
+    @EnvironmentObject var personalPlanner: Planner
+    @StateObject private var otherPlanner = Planner()
+    @StateObject private var library = ProfessionalLibrary()
+    @State private var choosingOther = false
+    @State private var pickerReplacing: String?
+    private var planner: Planner { library.selectedID == nil ? personalPlanner : otherPlanner }
     @Environment(\.scenePhase) private var phase
     @AppStorage("lanke.schedule.grid") private var grid = false
     @State private var day = SchoolSchedule.calendar.startOfDay(for: Date())
@@ -117,7 +122,21 @@ struct ScheduleHome: View {
     @State private var adding = false
     @State private var selected: Lesson?
     private let ticker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    private var report: TimetableReport? { store.snapshot?.timetable }
+    private var report: TimetableReport? { library.current?.report ?? store.snapshot?.timetable }
+    private var heading: String { library.current?.title ?? "我的课表" }
+    private func refreshSchedule(_ semester: Semester?) async {
+        guard let source = library.current else { await store.refresh(.timetable, semester: semester); return }
+        if let semester, semester != source.report.options.selected {
+            pickerReplacing = source.id; choosingOther = true; return
+        }
+        do { let page = try await store.reloadProfessional(source.selection); try library.save(page, replacing: source.id) }
+        catch { store.message = error.localizedDescription }
+    }
+    private func loadOtherPlanner() {
+        otherPlanner.load(account: (store.snapshot?.student.account ?? "") + ".professional." + (library.selectedID ?? "none"))
+        otherPlanner.saved.starts = personalPlanner.saved.starts
+        otherPlanner.saved.beginnings = personalPlanner.saved.beginnings
+    }
     private var monday: Date { SchoolSchedule.monday(day) }
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
     var body: some View {
@@ -127,7 +146,7 @@ struct ScheduleHome: View {
                     if store.needsLogin { Button("重新登录以更新数据") { Task { await store.requestLogin() } } }
                     ScheduleQueryBar(options: report?.options, disabled: store.busy || !store.isOnline,
                         day: $day, beginning: planner.beginning(report)) { value in
-                            Task { await store.refresh(.timetable, semester: value) }
+                            Task { await refreshSchedule(value) }
                         }
                     if grid {
                         weekGrid
@@ -158,6 +177,9 @@ struct ScheduleHome: View {
                             }
                         }
                     }
+                    if let practice = report?.practice, !practice.isEmpty {
+                        DisclosureGroup("实践课程及其他安排") { Text(practice).textSelection(.enabled) }
+                    }
                     if let report, !report.adjustments.isEmpty {
                         DisclosureGroup("调停课说明") {
                             Text(report.adjustments).font(.callout).textSelection(.enabled)
@@ -178,18 +200,36 @@ struct ScheduleHome: View {
             }
             .background(Palette.background).navigationTitle("").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                PageHeadingToolbar(title: "我的课表", date: report?.fetchedAt)
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button { library.selectedID = nil } label: {
+                            Label("我的课表", systemImage: library.selectedID == nil ? "checkmark" : "calendar")
+                        }
+                        ForEach(library.saved) { source in
+                            Button { library.selectedID = source.id } label: {
+                                Label(source.title, systemImage: library.selectedID == source.id ? "checkmark" : "calendar")
+                            }
+                        }
+                        Button { pickerReplacing = nil; choosingOther = true } label: { Label("添加其他课表", systemImage: "plus") }.disabled(library.saved.count >= 2)
+                        if library.selectedID != nil {
+                            Button("移除此课表", role: .destructive) { library.removeSelected() }
+                        }
+                    } label: { PageHeading(title: heading, date: report?.fetchedAt).padding(.horizontal, 4) }
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("添加课程")
-                    Button { Task { await store.refresh(.timetable, semester: report?.options.selected) } }
+                    Button { Task { await refreshSchedule(report?.options.selected) } }
                     label: { Image(systemName: "arrow.clockwise") }.disabled(store.busy || !store.isOnline).accessibilityLabel("刷新课表")
                 }
             }
-            .sheet(isPresented: $adding) { AddLessonView(day: day) }
-            .sheet(item: $selected) { LessonDetail(lesson: $0) }
+            .sheet(isPresented: $adding) { AddLessonView(day: day).environmentObject(planner) }
+            .sheet(isPresented: $choosingOther) { ProfessionalPicker(library: library, replacing: pickerReplacing) }
+            .sheet(item: $selected) { LessonDetail(lesson: $0).environmentObject(planner) }
             .alert("课程设置", isPresented: Binding(get: { planner.error != nil }, set: { if !$0 { planner.error = nil } })) {
                 Button("知道了") { planner.error = nil }
             } message: { Text(planner.error ?? "") }
+            .task(id: store.snapshot?.student.account) { library.load(account: store.snapshot?.student.account ?? "signed-out"); loadOtherPlanner() }
+            .onChange(of: library.selectedID) { _, _ in loadOtherPlanner() }
             .onReceive(ticker) { _ in followToday() }
             .onChange(of: phase) { _, value in if value == .active { followToday() } }
         }
@@ -429,5 +469,116 @@ struct ScheduleSettings: View {
             Section { Button("恢复已删除的课程") { planner.saved.hidden = []; planner.persist() } }
         }.navigationTitle("课表设置").navigationBarTitleDisplayMode(.inline)
             .environment(\.timeZone, SchoolSchedule.calendar.timeZone)
+    }
+}
+
+@MainActor final class ProfessionalLibrary: ObservableObject {
+    @Published var saved: [SavedProfessionalTimetable] = []
+    @Published var selectedID: String? { didSet { persist() } }
+    private var key = ""
+    var current: SavedProfessionalTimetable? { saved.first { $0.id == selectedID } }
+    func load(account: String) {
+        let next = "lanke.professional." + account
+        guard next != key else { return }
+        key = next
+        saved = (UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([SavedProfessionalTimetable].self, from: $0) }) ?? []
+        let selected = UserDefaults.standard.string(forKey: key + ".selected")
+        selectedID = saved.contains { $0.id == selected } ? selected : nil
+    }
+    func save(_ page: ProfessionalPage, replacing id: String?) throws {
+        let duplicate = saved.first { $0.selection == page.selected }
+        let target = id ?? duplicate?.id
+        let item = try SavedProfessionalTimetable(id: target ?? UUID().uuidString, page: page)
+        if let index = saved.firstIndex(where: { $0.id == target }) { saved[index] = item }
+        else {
+            guard saved.count < 2 else { throw CampusError.message("最多添加两份其他课表，请先移除一份。") }
+            saved.append(item)
+        }
+        selectedID = item.id; persist()
+    }
+    func removeSelected() {
+        guard let selectedID else { return }
+        saved.removeAll { $0.id == selectedID }; self.selectedID = nil; persist()
+    }
+    private func persist() {
+        guard !key.isEmpty else { return }
+        if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data, forKey: key) }
+        UserDefaults.standard.set(selectedID, forKey: key + ".selected")
+    }
+}
+
+struct ProfessionalPicker: View {
+    @ObservedObject var library: ProfessionalLibrary
+    let replacing: String?
+    @EnvironmentObject var store: CampusStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var page: ProfessionalPage?
+    @State private var loading = false
+    @State private var failure: String?
+    private let labels = ["学年", "学期", "年级", "学院", "专业", "推荐课表"]
+    private func fetch(_ key: String? = nil, _ value: String? = nil) async {
+        guard !loading else { return }
+        loading = true; failure = nil
+        defer { loading = false }
+        do { page = try await store.professionalPage(changing: key, value: value) }
+        catch { failure = error.localizedDescription }
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let page {
+                    Section("选择学校提供的课表") {
+                        ForEach(Array(ProfessionalPage.keys.enumerated()), id: \.offset) { index, key in
+                            Menu {
+                                ForEach(page.options[key] ?? []) { option in
+                                    Button {
+                                        Task { await fetch(key, option.value) }
+                                    } label: {
+                                        if page.selected[key] == option.value { Label(option.label.isEmpty ? "请选择" : option.label, systemImage: "checkmark") }
+                                        else { Text(option.label.isEmpty ? "请选择" : option.label) }
+                                    }
+                                }
+                            } label: {
+                                LabeledContent(labels[index], value: page.options[key]?.first { $0.value == page.selected[key] }?.label ?? "请选择")
+                            }.disabled(loading || store.busy)
+                        }
+                    }
+                    if let report = page.report {
+                        Section("查询结果") {
+                            Text(page.title)
+                            Text("\(report.courses.count)个课程单元格").foregroundStyle(.secondary)
+                            Text("保存后可切换列表和表格，添加课程或删除当天课程。").font(.caption)
+                        }
+                    }
+                }
+                if loading { ProgressView("正在读取学校选项…") }
+                if let failure {
+                    Section {
+                        Text(failure).foregroundStyle(.red)
+                        Button("重新读取选项") { Task { await fetch() } }.disabled(loading || store.busy)
+                    }
+                }
+            }
+            .navigationTitle(replacing == nil ? "添加其他课表" : "更改课表选项").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        guard let page else { return }
+                        do { try library.save(page, replacing: replacing); dismiss() }
+                        catch { failure = error.localizedDescription }
+                    }.disabled(loading || store.busy || failure != nil || page?.report == nil || (page?.selected["kb"] ?? "").isEmpty)
+                }
+            }
+            .task {
+                if let source = library.saved.first(where: { $0.id == replacing }) {
+                    loading = true
+                    do { page = try await store.reloadProfessional(source.selection) }
+                    catch { failure = error.localizedDescription }
+                    loading = false
+                } else { await fetch() }
+            }
+            .interactiveDismissDisabled(loading)
+        }
     }
 }

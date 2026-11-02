@@ -55,9 +55,11 @@ public struct TableRecord: Codable, Identifiable, Sendable {
 public struct TimetableReport: Codable, Sendable {
     public let courses: [CourseCell]
     public let adjustments: String
+    public let practice: String?
     public let options: PageOptions
     public let fetchedAt: Date
-    public init(courses: [CourseCell], adjustments: String, options: PageOptions, fetchedAt: Date = Date()) {
+    public init(courses: [CourseCell], adjustments: String, options: PageOptions, fetchedAt: Date = Date(), practice: String? = nil) {
+        self.practice = practice
         self.courses = courses; self.adjustments = adjustments; self.options = options; self.fetchedAt = fetchedAt
     }
 }

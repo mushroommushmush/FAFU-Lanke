@@ -99,6 +99,20 @@ import CampusCore
             try await saveSession(); persist()
         } catch { message = friendly(error) }
     }
+    func professionalPage(changing key: String? = nil, value: String? = nil) async throws -> ProfessionalPage {
+        guard !busy, isOnline else { throw CampusError.message("请先恢复登录，再查询专业课表。") }
+        busy = true; defer { busy = false }
+        return try await client.professionalPage(changing: key, value: value)
+    }
+    func reloadProfessional(_ selection: [String: String]) async throws -> ProfessionalPage {
+        guard !busy, isOnline else { throw CampusError.message("请先恢复登录，再刷新专业课表。") }
+        busy = true; defer { busy = false }
+        do { return try await client.loadProfessional(selection: selection) }
+        catch CampusError.sessionExpired {
+            try await automaticLogin()
+            return try await client.loadProfessional(selection: selection)
+        }
+    }
     private var didRestore = false
     @Published var restoring = false
     @Published var hasSavedSession = false
@@ -275,6 +289,11 @@ import CampusCore
         guard !busy else { return }
         do {
             try cache.clear()
+            if let account = snapshot?.student.account ?? cachedStudent?.account {
+                UserDefaults.standard.removeObject(forKey: "lanke.professional." + account)
+                UserDefaults.standard.removeObject(forKey: "lanke.professional." + account + ".selected")
+                for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("lanke.planner." + account + ".professional.") { UserDefaults.standard.removeObject(forKey: key) }
+            }
             AccountVault().clear()
             await returnToLogin()
             cachedStudent = nil

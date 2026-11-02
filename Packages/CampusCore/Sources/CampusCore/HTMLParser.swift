@@ -143,10 +143,10 @@ public enum HTMLParser {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }.joined(separator: "\n")
     }
-    public static func timetable(_ html: String) throws -> TimetableReport {
+    public static func timetable(_ html: String, tableID: String = "Table1", pageOptions: PageOptions? = nil) throws -> TimetableReport {
         try requireAuthenticated(html)
         let document = try SwiftSoup.parse(html)
-        guard let table = try document.getElementById("Table1") else { throw CampusError.unexpectedPage("课表") }
+        guard let table = try document.getElementById(tableID) else { throw CampusError.unexpectedPage("课表") }
         let rows = try table.select("tr").array()
         var grid: [[Int: GridCell]] = Array(repeating: [:], count: rows.count)
         var origins: [GridCell] = []
@@ -188,10 +188,22 @@ public enum HTMLParser {
                 }
             }
             let period = periods.isEmpty ? "节次见课程详情" : periods.joined(separator: " · ")
-            courses.append(CourseCell(id: "\(cell.row)-\(cell.column)", weekday: weekday, period: period, content: cell.text))
+            courses.append(CourseCell(id: "\(cell.row)-\(cell.column)", weekday: weekday, period: period, content: tableID == "Table6" ? normalizeProfessional(cell.text) : cell.text))
         }
         // Preserve adjustment notices instead of guessing how to merge canceled/moved sessions.
         let adjustments = try document.getElementById("DBGrid").map { try lines($0) } ?? ""
-        return TimetableReport(courses: courses, adjustments: adjustments, options: try options(html))
+        return TimetableReport(courses: courses, adjustments: adjustments, options: try pageOptions ?? options(html), practice: tableID == "Table6" ? try document.getElementById("DataGrid1").map { try lines($0) } : nil)
+    }
+    private static func normalizeProfessional(_ text: String) -> String {
+        let pattern = #"([0-9]+(?:[-－][0-9]+)?(?:[,，][0-9]+(?:[-－][0-9]+)?)*)\s*([单双]?)\s*[（(]([0-9,，、]+)[）)]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+        var result = text
+        let ns = text as NSString
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
+            let weeks = ns.substring(with: match.range(at: 1)).replacingOccurrences(of: "，", with: ",").split(separator: ",").map { "第" + $0 + "周" }.joined(separator: "、")
+            let normalized = weeks + ns.substring(with: match.range(at: 2)) + " 第" + ns.substring(with: match.range(at: 3)) + "节"
+            if let range = Range(match.range, in: result) { result.replaceSubrange(range, with: normalized) }
+        }
+        return result.replacingOccurrences(of: "/", with: "\n")
     }
 }
