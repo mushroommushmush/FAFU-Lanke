@@ -37,7 +37,12 @@ import Combine
     func lessons(_ report: TimetableReport?, on date: Date) -> [Lesson] {
         let imported = SchoolSchedule.lessons(report: report, on: date, beginning: beginning(report), starts: saved.starts)
         let manual = saved.manual.filter { SchoolSchedule.calendar.isDate($0.start, inSameDayAs: date) }
-        return (imported + manual).filter { !saved.hidden.contains($0.id) }.sorted { $0.start < $1.start }
+        return CourseGridLayout.unique(imported + manual).filter { !saved.hidden.contains($0.id) }.sorted { $0.start < $1.start }
+    }
+    func activityLessons(account: String, report: TimetableReport?, on date: Date) -> [Lesson] {
+        // A planner scoped to a professional timetable must never create personal activities.
+        guard key == "lanke.planner." + account else { return [] }
+        return lessons(report, on: date)
     }
     func add(_ lesson: Lesson) { saved.manual.append(lesson); persist() }
     func edit(_ lesson: Lesson) {
@@ -258,7 +263,7 @@ struct ScheduleHome: View {
                 ForEach(0..<7, id: \.self) { index in
                     let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
                     let courses = planner.lessons(report, on: date).filter { fitsGrid($0) }
-                    let layout = lanes(for: courses)
+                    let layout = CourseGridLayout.placements(courses)
                     VStack(spacing: 0) {
                         VStack(spacing: 2) {
                             Text(weekdays[index]).font(.system(size: 11, weight: .semibold))
@@ -273,7 +278,8 @@ struct ScheduleHome: View {
                             }
                             ForEach(courses) { lesson in
                                 TimelineView(.periodic(from: .now, by: 15)) { context in
-                                    let cardWidth = dayWidth / CGFloat(layout.count)
+                                    let placement = layout[lesson.id]
+                                    let cardWidth = dayWidth / CGFloat(placement?.columns ?? 1)
                                     let cardHeight = max(32, position(lesson.end, end: true) - position(lesson.start) - 1)
                                     Button { selected = lesson } label: {
                                         VStack(spacing: 3) {
@@ -287,7 +293,7 @@ struct ScheduleHome: View {
                                             .shadow(color: lesson.phase(at: context.date) == .soon ? LessonColors.soon.opacity(0.8) : .clear, radius: 3)
                                     }.buttonStyle(.plain)
                                         .accessibilityLabel(lesson.name + "，教室" + lesson.room)
-                                        .offset(x: CGFloat(layout.indices[lesson.id] ?? 0) * cardWidth, y: position(lesson.start))
+                                        .offset(x: CGFloat(placement?.column ?? 0) * cardWidth, y: position(lesson.start))
                                 }
                             }
                         }.frame(width: dayWidth, height: gridRowHeight * 12)
@@ -303,16 +309,6 @@ struct ScheduleHome: View {
         return cal.isDate(lesson.start, inSameDayAs: lesson.end)
             && start.hour! * 60 + start.minute! >= planner.saved.starts[0]
             && end.hour! * 60 + end.minute! <= planner.saved.starts[11] + 45
-    }
-    private func lanes(for courses: [Lesson]) -> (indices: [String: Int], count: Int) {
-        var ends: [Date] = []
-        var indices: [String: Int] = [:]
-        for course in courses.sorted(by: { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }) {
-            let lane = ends.firstIndex(where: { $0 <= course.start }) ?? ends.count
-            if lane == ends.count { ends.append(course.end) } else { ends[lane] = course.end }
-            indices[course.id] = lane
-        }
-        return (indices, max(1, ends.count))
     }
     private func position(_ date: Date, end: Bool = false) -> CGFloat {
         let parts = SchoolSchedule.calendar.dateComponents([.hour, .minute], from: date)

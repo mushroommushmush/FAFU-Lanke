@@ -341,7 +341,7 @@ struct AccountView: View {
                     Button("刷新实时活动") {
                         liveEnabled = true
                         Task {
-                            await activities.refresh(lessons: planner.lessons(store.snapshot?.timetable, on: .now), account: store.snapshot?.student.account ?? "", enabled: store.mode != .demo && store.mode != .login)
+                            await activities.refresh(lessons: planner.activityLessons(account: store.snapshot?.student.account ?? "", report: store.snapshot?.timetable, on: .now), account: store.snapshot?.student.account ?? "", enabled: store.mode != .demo && store.mode != .login)
                             store.message = activities.message ?? "已重新预约当天最近的课程实时活动。"
                         }
                     }

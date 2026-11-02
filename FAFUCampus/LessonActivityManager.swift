@@ -93,7 +93,7 @@ struct ActivityCoordinator: View {
     }
     private func update() {
         guard phase == .active else { return }
-        let lessons = planner.lessons(store.snapshot?.timetable, on: Date())
+        let lessons = planner.activityLessons(account: store.snapshot?.student.account ?? "", report: store.snapshot?.timetable, on: Date())
         let allowed = enabled && store.mode != .login && store.mode != .demo
         Task { await activities.sync(lessons: lessons, account: store.snapshot?.student.account ?? "", enabled: allowed) }
     }
