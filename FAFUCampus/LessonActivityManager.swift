@@ -6,6 +6,12 @@ import Combine
 @MainActor final class LessonActivityManager: ObservableObject {
     @Published var message: String?
     private var syncing = false
+    func refresh(lessons: [Lesson], account: String, enabled: Bool) async {
+        guard !syncing else { message = "正在更新，请稍后再试。"; return }
+        for activity in Activity<LessonActivity>.activities { await activity.end(nil, dismissalPolicy: .immediate) }
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("lanke.live.requested." + account + ".") { UserDefaults.standard.removeObject(forKey: key) }
+        await sync(lessons: lessons, account: account, enabled: enabled)
+    }
     func sync(lessons: [Lesson], account: String, enabled: Bool) async {
         guard !syncing else { return }
         syncing = true
@@ -50,7 +56,7 @@ import Combine
             // Respect a person's decision to dismiss an activity; do not recreate it every tick.
             guard !requested.contains(lesson.id) else { continue }
             do {
-                let notice = lesson.start.addingTimeInterval(-900)
+                let notice = lesson.start.addingTimeInterval(-1200)
                 if notice > now {
                     if #available(iOS 26.0, *) {
                         _ = try Activity.request(attributes: attributes, content: content, pushType: nil,
@@ -92,4 +98,3 @@ struct ActivityCoordinator: View {
         Task { await activities.sync(lessons: lessons, account: store.snapshot?.student.account ?? "", enabled: allowed) }
     }
 }
-

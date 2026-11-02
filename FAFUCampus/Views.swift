@@ -60,6 +60,13 @@ struct LoginView: View {
                         Text("览课").font(.system(size: 36, weight: .bold, design: .rounded))
                     }.padding(.top, 28)
                     VStack(spacing: 18) {
+                        if !store.savedAccounts.isEmpty {
+                            Menu("切换已保存账号") {
+                                ForEach(store.savedAccounts, id: \.account) { saved in
+                                    Button(saved.account) { account = saved.account; password = saved.password; captcha = "" }
+                                }
+                            }
+                        }
                         TextField("学号", text: $account).textContentType(.username).keyboardType(.asciiCapable)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .accessibilityIdentifier("account")
@@ -85,7 +92,7 @@ struct LoginView: View {
                     VStack(spacing: 12) {
                         Button {
                             let secret = password
-                            password = ""
+                            // Keep input after an unsuccessful login.
                             Task { await store.login(account: account.trimmingCharacters(in: .whitespacesAndNewlines),
                                                      password: secret, captcha: captcha.trimmingCharacters(in: .whitespacesAndNewlines)) }
                         } label: {
@@ -94,7 +101,7 @@ struct LoginView: View {
                         }.modifier(LankePrimaryButton()).controlSize(.large)
                             .disabled(store.busy || account.isEmpty || password.isEmpty || captcha.isEmpty || store.captchaImage == nil)
                         Toggle("记住密码并自动登录", isOn: Binding(get: { store.rememberLogin }, set: { store.setRememberLogin($0) }))
-                        Text("学校入口使用 HTTP。会话保存在本机钥匙串；开启自动登录后，密码也仅保存在本机钥匙串。验证码无法识别时需手动输入。")
+                        Text("学校入口使用 HTTP。会话保存在本机钥匙串；成功登录的账号和密码保存在本机钥匙串，可切换账号；自动登录由开关控制。验证码无法识别时需手动输入。")
                             .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let cached = store.cachedStudent {
@@ -253,7 +260,7 @@ struct RecordsView: View {
                                     Spacer(minLength: 0)
                                     if feature == .grades {
                                         Text(record.value(["成绩", "总评成绩"]))
-                                            .font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(Palette.forest)
+                                            .font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(gradeColor(record.value(["成绩", "总评成绩"])))
                                     }
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                                 }.padding(20).background(Palette.card, in: RoundedRectangle(cornerRadius: 18))
@@ -279,6 +286,15 @@ struct RecordsView: View {
     }
 }
 
+private func gradeColor(_ text: String) -> Color {
+    guard let grade = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return Palette.forest }
+    if grade < 60 { return .red }
+    if grade >= 90 { return Palette.forest }
+    if grade >= 80 { return LessonColors.soon }
+    if grade >= 70 { return .purple }
+    return .primary
+}
+
 struct RecordDetailView: View {
     let record: TableRecord
     var body: some View {
@@ -298,6 +314,8 @@ struct AccountView: View {
     @State private var portal: PortalSheet?
     @EnvironmentObject var planner: Planner
     @State private var confirmClear = false
+    @EnvironmentObject var activities: LessonActivityManager
+    @AppStorage("lanke.live.enabled.v2") private var liveEnabled = true
     var body: some View {
         NavigationStack {
             List {
@@ -315,7 +333,18 @@ struct AccountView: View {
                     NavigationLink("学分（选修）查询") { ElectiveCreditsView() }
                     Toggle("记住密码并自动登录", isOn: Binding(get: { store.rememberLogin }, set: { store.setRememberLogin($0) }))
                 }
+                Section("校园网") {
+                    Link("教室校园网登录", destination: URL(string: "http://10.8.30.1")!)
+                    Link("宿舍校园网登录", destination: URL(string: "http://210.34.84.127")!)
+                }
                 Section("查询与数据") {
+                    Button("刷新实时活动") {
+                        liveEnabled = true
+                        Task {
+                            await activities.refresh(lessons: planner.lessons(store.snapshot?.timetable, on: .now), account: store.snapshot?.student.account ?? "", enabled: store.mode != .demo && store.mode != .login)
+                            store.message = activities.message ?? "已重新预约当天最近的课程实时活动。"
+                        }
+                    }
                     Button("刷新全部数据") { Task { await store.refreshAll() } }.disabled(store.busy || !store.isOnline)
                     if store.hasSavedSession && !store.isOnline {
                         Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
@@ -366,7 +395,7 @@ struct AboutView: View {
                 Text("非学校官方应用。数据来自你登录后的教务网页；课表、成绩与考试安排在本机解析。")
             }
             Section("登录与数据") {
-                Text("登录会话保存在本机钥匙串。关闭应用后会自动恢复并向学校验证；会话失效时需要重新输入验证码登录。密码仅在开启自动登录后保存在本机钥匙串。")
+                Text("登录会话保存在本机钥匙串。关闭应用后会自动恢复并向学校验证；会话失效时需要重新输入验证码登录。成功登录的账号密码保存在本机钥匙串，清除本地数据时移除。")
                 Text("学校入口使用 HTTP。已下载的记录保存在本机，不包含密码或网页原文。退出登录会移除已保存的会话。")
                 Text("多任务界面正常显示当前页面。")
             }

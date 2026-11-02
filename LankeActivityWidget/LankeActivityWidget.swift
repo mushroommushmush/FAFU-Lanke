@@ -17,9 +17,9 @@ struct LessonTimer: View {
     let state: LessonActivity.ContentState
     let active: Bool
     var body: some View {
-        Text(timerInterval: active ? state.start...state.end : state.start.addingTimeInterval(-900)...state.start,
+        if Date() >= state.end { Text("已下课") } else { Text(timerInterval: active ? state.start...state.end : state.start.addingTimeInterval(-1200)...state.start,
              countsDown: true, showsHours: false)
-            .monospacedDigit().multilineTextAlignment(.trailing)
+            .monospacedDigit().multilineTextAlignment(.trailing) }
     }
 }
 
@@ -41,7 +41,7 @@ private struct LessonSummary: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(courseTime(state)).frame(maxWidth: .infinity, alignment: .leading)
-                Text(active ? "距下课还有" : "距上课还有").multilineTextAlignment(.trailing)
+                Text(Date() >= state.end ? "已下课" : (active ? "距下课还有" : "距上课还有")).multilineTextAlignment(.trailing)
             }.font(.caption).foregroundStyle(.white)
         }
     }

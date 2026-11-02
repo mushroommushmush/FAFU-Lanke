@@ -314,26 +314,53 @@ struct AddLessonView: View {
     @State private var room = ""
     @State private var start = Date()
     @State private var end = Date().addingTimeInterval(2700)
+    @State private var byPeriod = false
+    @State private var periods: Set<Int> = [1, 2]
+    private func applyPeriods() {
+        guard byPeriod, let first = periods.min(), let last = periods.max() else { return }
+        let base = SchoolSchedule.calendar.startOfDay(for: start)
+        start = base.addingTimeInterval(Double(planner.saved.starts[first - 1]) * 60)
+        end = base.addingTimeInterval(Double(planner.saved.starts[last - 1] + 45) * 60)
+    }
     var body: some View {
         NavigationStack {
             Form {
                 TextField("课程名称", text: $name)
                 TextField("教室（如创211）", text: $room)
-                DatePicker("上课", selection: $start)
-                DatePicker("下课", selection: $end, in: start...)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack { ForEach(["禧", "创", "田", "博", "明北附", "诚", "宝"], id: \.self) { prefix in
+                        Button(prefix) { room = prefix }.buttonStyle(.bordered)
+                    } }
+                }
+                Toggle("按节次设置时间", isOn: $byPeriod)
+                if byPeriod {
+                    DatePicker("日期", selection: $start, displayedComponents: .date)
+                    Section("勾选连续节次") {
+                        ForEach(1...12, id: \.self) { number in
+                            Toggle("第\(number)节", isOn: Binding(get: { periods.contains(number) }, set: { selected in
+                                if selected { periods.insert(number) } else { periods.remove(number) }; applyPeriods()
+                            }))
+                        }
+                        Text("按首节开始、末节结束，中间包含课间休息。").font(.caption)
+                    }
+                } else {
+                    DatePicker("上课", selection: $start)
+                    DatePicker("下课", selection: $end, in: start...)
+                }
             }.navigationTitle(existing == nil ? "添加课程" : "修改课程").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") {
                         let lesson = Lesson(id: existing?.id ?? UUID().uuidString, name: name.trimmingCharacters(in: .whitespacesAndNewlines), room: room.trimmingCharacters(in: .whitespacesAndNewlines), start: start, end: end)
                         if existing == nil { planner.add(lesson) } else { planner.edit(lesson) }; dismiss()
-                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || end <= start) }
+                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || end <= start || (byPeriod && (periods.isEmpty || periods.count != (periods.max()! - periods.min()! + 1)))) }
                 }
                 .onAppear {
                     if let existing { name = existing.name; room = existing.room; start = existing.start; end = existing.end }
                     else { start = SchoolSchedule.calendar.date(bySettingHour: 8, minute: 0, second: 0, of: day)!; end = start.addingTimeInterval(2700) }
                 }
-                .onChange(of: start) { _, value in if end <= value { end = value.addingTimeInterval(2700) } }
+                .onChange(of: byPeriod) { _, _ in applyPeriods() }
+                .onChange(of: start) { _, value in if byPeriod { applyPeriods() } else if end <= value { end = value.addingTimeInterval(2700) } }
         }.environment(\.timeZone, SchoolSchedule.calendar.timeZone)
     }
 }
@@ -396,7 +423,7 @@ struct ScheduleSettings: View {
             Section("实时活动") {
                 Toggle("课程实时活动", isOn: $live)
                 if let message = activities.message { Text(message).font(.caption).foregroundStyle(.orange) }
-                Text("打开应用后预约当天最近两堂课。课前15分钟启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可在系统中移除活动，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
+                Text("打开应用后预约当天最近两堂课。课前20分钟启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可在系统中移除活动，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
             }
             Section { Button("恢复已删除的课程") { planner.saved.hidden = []; planner.persist() } }
         }.navigationTitle("课表设置").navigationBarTitleDisplayMode(.inline)

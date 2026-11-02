@@ -20,7 +20,8 @@ import CampusCore
     private let vault = SessionVault()
     private let credentials = CredentialsVault()
     @Published var rememberLogin = UserDefaults.standard.bool(forKey: "lanke.rememberLogin")
-    var rememberedCredentials: LoginCredentials? { credentials.load() }
+    var savedAccounts: [LoginCredentials] { AccountVault().load() }
+    var rememberedCredentials: LoginCredentials? { savedAccounts.first ?? credentials.load() }
     func setRememberLogin(_ enabled: Bool) {
         rememberLogin = enabled
         UserDefaults.standard.set(enabled, forKey: "lanke.rememberLogin")
@@ -181,6 +182,8 @@ import CampusCore
                 snapshot = CampusSnapshot(student: student)
             }
             mode = .online; needsLogin = false; captchaImage = nil; cachedStudent = student
+            do { try AccountVault().save(LoginCredentials(account: account, password: password)) }
+            catch { message = friendly(error) }
             if rememberLogin {
                 do { try credentials.save(LoginCredentials(account: account, password: password)) }
                 catch { message = friendly(error) }
@@ -272,6 +275,7 @@ import CampusCore
         guard !busy else { return }
         do {
             try cache.clear()
+            AccountVault().clear()
             await returnToLogin()
             cachedStudent = nil
         } catch { message = "清除本地数据失败：\(error.localizedDescription)" }
