@@ -1,9 +1,10 @@
-# 0.5.0 当前交付状态
+# 0.5.0 构建验证结果
 
 - 应用功能源码提交：77aee9a1a1b8e9c2cb1c8d689de58f4ccd6fea96。
-- 构建环境提交：70edc1ba228509a3dd3f6e4bdf2f81265956265c。
-- 云端验证：https://github.com/mushroommushmush/FAFU-Lanke/actions/runs/41490906524
-- 当前build和layout任务均为queued，尚未执行测试或编译；没有新版IPA。旧macOS15队列长时间未分配机器，已改用macOS26、保持Xcode26.3。
-- 本地1241项项目结构检查通过；新增5项专业课表测试尚未执行。不能声称50项测试通过。
+- 成功构建提交：00605331daa277cb5129aa4b0b8e136ec2f3c0fc。已换到macOS26 Intel免费标准机器，手动运行支持选择其他Mac标签；截图任务在打包成功后执行。
+- 云端验证：https://github.com/mushroommushmush/FAFU-Lanke/actions/runs/41494709961
+- build任务成功，50项核心测试、模拟器编译、设备归档及IPA上传通过。本地1241项项目结构检查通过。
+- 安装包：https://github.com/mushroommushmush/FAFU-Lanke/actions/runs/41494709961/artifacts/13167105717
+- 截图任务尚在运行，尚未完成本版截图检查。
 - 没有使用真实教务账号验证六级选项、实际HTML及表单回传，没有实体设备交互或截图验证。
-- 安装前必须等待构建成功；如失败，需读取日志并修复源码。
+- 本机未下载该IPA，未检查包内版本。项目设置为0.5.0（14），需用Sideloadly重新签名安装。
