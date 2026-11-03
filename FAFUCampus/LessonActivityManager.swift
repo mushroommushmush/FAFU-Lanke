@@ -16,7 +16,7 @@ import Combine
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        let revision = "0.2.3"
+        let revision = "0.5.2"
         if UserDefaults.standard.string(forKey: "lanke.live.layoutRevision") != revision {
             for activity in Activity<LessonActivity>.activities {
                 await activity.end(nil, dismissalPolicy: .immediate)
@@ -36,9 +36,9 @@ import Combine
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
-        guard enabled else { UserDefaults.standard.removeObject(forKey: historyKey); message = nil; return }
+        guard enabled else { UserDefaults.standard.removeObject(forKey: historyKey); if message != nil { message = nil }; return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { message = "请在系统设置中允许览课使用实时活动。"; return }
-        message = nil
+        if message != nil { message = nil }
         for lesson in desired {
             let state = LessonActivity.ContentState(name: lesson.name, room: lesson.room, start: lesson.start, end: lesson.end, hasStarted: now >= lesson.start)
             let content = ActivityContent(state: state, staleDate: now < lesson.start ? lesson.start : lesson.end)
@@ -61,6 +61,10 @@ import Combine
                     if #available(iOS 26.0, *) {
                         _ = try Activity.request(attributes: attributes, content: content, pushType: nil,
                             style: .standard, alertConfiguration: AlertConfiguration(title: "即将上课", body: "请查看课程和教室", sound: .default), start: notice)
+                        requested.insert(lesson.id)
+                    } else {
+                        // iOS18 cannot schedule a future start: create the nearest activities while foregrounded.
+                        _ = try Activity.request(attributes: attributes, content: content, pushType: nil)
                         requested.insert(lesson.id)
                     }
                 } else {

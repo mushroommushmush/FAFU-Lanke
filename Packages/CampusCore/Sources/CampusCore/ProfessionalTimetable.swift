@@ -9,9 +9,8 @@ public struct ProfessionalPage: Sendable {
     public let action: String
     public let report: TimetableReport?
     public var title: String {
-        let major = options["zy"]?.first { $0.value == selected["zy"] }?.label ?? "专业"
         let group = options["kb"]?.first { $0.value == selected["kb"] }?.label ?? ""
-        return major + "课表" + (group.isEmpty ? "" : " · " + group)
+        return group.isEmpty ? "班级课表" : group
     }
 }
 
@@ -20,6 +19,7 @@ public struct SavedProfessionalTimetable: Codable, Identifiable, Sendable {
     public let title: String
     public let selection: [String: String]
     public let report: TimetableReport
+    public var displayTitle: String { title.components(separatedBy: " · ").last ?? title }
     public init(id: String = UUID().uuidString, page: ProfessionalPage) throws {
         guard let report = page.report, !(page.selected["kb"] ?? "").isEmpty else { throw CampusError.message("请选择推荐课表并等待查询完成。") }
         self.id = id; title = page.title; selection = page.selected; self.report = report

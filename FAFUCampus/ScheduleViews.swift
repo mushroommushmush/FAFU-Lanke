@@ -128,7 +128,7 @@ struct ScheduleHome: View {
     @State private var selected: Lesson?
     private let ticker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     private var report: TimetableReport? { library.current?.report ?? store.snapshot?.timetable }
-    private var heading: String { library.current?.title ?? "我的课表" }
+    private var heading: String { library.current?.displayTitle ?? "我的课表" }
     private func refreshSchedule(_ semester: Semester?) async {
         guard let source = library.current else { await store.refresh(.timetable, semester: semester); return }
         if let semester, semester != source.report.options.selected {
@@ -212,7 +212,7 @@ struct ScheduleHome: View {
                         }
                         ForEach(library.saved) { source in
                             Button { library.selectedID = source.id } label: {
-                                Label(source.title, systemImage: library.selectedID == source.id ? "checkmark" : "calendar")
+                                Label(source.displayTitle, systemImage: library.selectedID == source.id ? "checkmark" : "calendar")
                             }
                         }
                         Button { pickerReplacing = nil; choosingOther = true } label: { Label("添加其他课表", systemImage: "plus") }.disabled(library.saved.count >= 2)
@@ -280,13 +280,13 @@ struct ScheduleHome: View {
                                 TimelineView(.periodic(from: .now, by: 15)) { context in
                                     let placement = layout[lesson.id]
                                     let cardWidth = dayWidth / CGFloat(placement?.columns ?? 1)
-                                    let cardHeight = max(32, position(lesson.end, end: true) - position(lesson.start) - 1)
+                                    let cardHeight = max(24, position(lesson.end, end: true) - position(lesson.start) - 1)
                                     Button { selected = lesson } label: {
                                         VStack(spacing: 3) {
-                                            Text(lesson.name).font(.system(size: 10, weight: .medium)).lineLimit(4)
-                                            Text("@" + (lesson.room.isEmpty ? "待确认" : lesson.room)).font(.system(size: 9)).lineLimit(2)
+                                            Text(lesson.name).font(.system(size: 10, weight: .medium)).lineLimit(cardHeight < 36 ? 1 : 4)
+                                            if cardHeight >= 36 { Text("@" + (lesson.room.isEmpty ? "待确认" : lesson.room)).font(.system(size: 9)).lineLimit(2) }
                                         }.foregroundStyle(.black).multilineTextAlignment(.center)
-                                            .padding(.horizontal, 2).padding(.vertical, 4)
+                                            .padding(.horizontal, 2).padding(.vertical, cardHeight < 36 ? 1 : 4)
                                             .frame(width: cardWidth, height: cardHeight).clipped()
                                             .background(LessonColors.course(lesson.name), in: RoundedRectangle(cornerRadius: 6))
                                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, lineWidth: 2))
@@ -311,13 +311,9 @@ struct ScheduleHome: View {
             && end.hour! * 60 + end.minute! <= planner.saved.starts[11] + 45
     }
     private func position(_ date: Date, end: Bool = false) -> CGFloat {
-        let parts = SchoolSchedule.calendar.dateComponents([.hour, .minute], from: date)
-        let minute = Double(parts.hour! * 60 + parts.minute!)
-        let times = planner.saved.starts.map(Double.init)
-        for index in 0..<12 {
-            if minute <= times[index] + 45 { return CGFloat(Double(index) * Double(gridRowHeight) + max(0, (minute - times[index]) / 45 * Double(gridRowHeight))) }
-        }
-        return gridRowHeight * 12
+        let parts = SchoolSchedule.calendar.dateComponents([.hour, .minute, .second], from: date)
+        let minute = Double(parts.hour! * 60 + parts.minute!) + Double(parts.second ?? 0) / 60
+        return CGFloat(SchoolSchedule.gridPosition(minute: minute, starts: planner.saved.starts)) * gridRowHeight
     }
 }
 
@@ -460,7 +456,7 @@ struct ScheduleSettings: View {
             Section("实时活动") {
                 Toggle("课程实时活动", isOn: $live)
                 if let message = activities.message { Text(message).font(.caption).foregroundStyle(.orange) }
-                Text("打开应用后预约当天最近两堂课。课前20分钟启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可在系统中移除活动，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
+                Text("打开应用后预约当天最近两堂课。iOS26可预约课前20分钟启动；iOS18打开应用时提前创建最近两堂课的活动，可能更早显示。启动受系统权限和数量限制影响；强制关闭应用后不能保证准时变色、结束。可在系统中移除活动，或回到应用自动清理。关闭后重开此开关可重新预约已关闭的活动。").font(.caption).foregroundStyle(.secondary)
             }
             Section { Button("恢复已删除的课程") { planner.saved.hidden = []; planner.persist() } }
         }.navigationTitle("课表设置").navigationBarTitleDisplayMode(.inline)
@@ -525,14 +521,9 @@ struct ProfessionalPicker: View {
                 if let page {
                     Section("选择学校提供的课表") {
                         ForEach(Array(ProfessionalPage.keys.enumerated()), id: \.offset) { index, key in
-                            Menu {
-                                ForEach(page.options[key] ?? []) { option in
-                                    Button {
-                                        Task { await fetch(key, option.value) }
-                                    } label: {
-                                        if page.selected[key] == option.value { Label(option.label.isEmpty ? "请选择" : option.label, systemImage: "checkmark") }
-                                        else { Text(option.label.isEmpty ? "请选择" : option.label) }
-                                    }
+                            NavigationLink {
+                                ProfessionalOptionList(title: labels[index], options: page.options[key] ?? [], selected: page.selected[key] ?? "") { value in
+                                    Task { await fetch(key, value) }
                                 }
                             } label: {
                                 LabeledContent(labels[index], value: page.options[key]?.first { $0.value == page.selected[key] }?.label ?? "请选择")
@@ -576,5 +567,29 @@ struct ProfessionalPicker: View {
             }
             .interactiveDismissDisabled(loading)
         }
+    }
+}
+
+
+struct ProfessionalOptionList: View {
+    let title: String
+    let options: [SelectOption]
+    let selected: String
+    let choose: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    var body: some View {
+        List(options.filter { query.isEmpty || $0.label.localizedCaseInsensitiveContains(query) }) { option in
+            Button {
+                dismiss(); choose(option.value)
+            } label: {
+                HStack {
+                    Text(option.label.isEmpty ? "请选择" : option.label).foregroundStyle(.primary)
+                    Spacer()
+                    if option.value == selected { Image(systemName: "checkmark") }
+                }.padding(.vertical, 5)
+            }
+        }.navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, prompt: "搜索" + title)
     }
 }

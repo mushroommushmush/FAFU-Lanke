@@ -17,7 +17,7 @@ struct LessonTimer: View {
     let state: LessonActivity.ContentState
     let active: Bool
     var body: some View {
-        if Date() >= state.end { Text("已下课") } else { Text(timerInterval: active ? state.start...state.end : state.start.addingTimeInterval(-1200)...state.start,
+        if Date() >= state.end { Text("已下课") } else { Text(timerInterval: active ? state.start...state.end : min(Date(), state.start.addingTimeInterval(-1200))...state.start,
              countsDown: true, showsHours: false)
             .monospacedDigit().multilineTextAlignment(.trailing) }
     }

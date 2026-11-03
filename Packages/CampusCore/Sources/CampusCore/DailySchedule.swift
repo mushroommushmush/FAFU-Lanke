@@ -33,6 +33,15 @@ public enum SchoolSchedule {
         let end = base.addingTimeInterval(Double(starts[last - 1] + 45) * 60)
         return end > start ? DateInterval(start: start, end: end) : nil
     }
+    public static func gridPosition(minute: Double, starts: [Int]) -> Double {
+        guard !starts.isEmpty else { return 0 }
+        let points = starts.map(Double.init) + [Double(starts.last! + 45)]
+        if minute <= points[0] { return 0 }
+        for i in 0..<starts.count where minute < points[i + 1] {
+            return Double(i) + (minute - points[i]) / max(1, points[i + 1] - points[i])
+        }
+        return Double(starts.count)
+    }
     public static func classroom(in lines: [String]) -> String {
         for line in lines.reversed() {
             // Course-change identifiers such as (换0420) are not room names.
