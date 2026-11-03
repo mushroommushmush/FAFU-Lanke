@@ -4,7 +4,11 @@ import SwiftUI
 import Combine
 
 @MainActor final class LessonActivityManager: ObservableObject {
-    @Published var message: String?
+    @Published private var currentMessage: String?
+    var message: String? {
+        get { currentMessage }
+        set { if currentMessage != newValue { currentMessage = newValue } }
+    }
     private var syncing = false
     func refresh(lessons: [Lesson], account: String, enabled: Bool) async {
         guard !syncing else { message = "正在更新，请稍后再试。"; return }
