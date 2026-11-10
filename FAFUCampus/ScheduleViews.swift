@@ -321,7 +321,7 @@ struct ScheduleHome: View {
                     VStack(spacing: 0) {
                         VStack(spacing: 2) {
                             Text(weekdays[index]).font(.system(size: 11, weight: .semibold))
-                            Text("\(SchoolSchedule.calendar.component(.day, from: date))").font(.system(size: 9))
+                            Text("\(SchoolSchedule.calendar.component(.month, from: date))-\(SchoolSchedule.calendar.component(.day, from: date))").font(.system(size: 9))
                         }.frame(width: dayWidth, height: 34)
                             .background(SchoolSchedule.calendar.isDateInToday(date) ? Palette.forest.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
                         ZStack(alignment: .topLeading) {

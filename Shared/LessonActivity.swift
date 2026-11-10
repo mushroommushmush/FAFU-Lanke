@@ -8,6 +8,7 @@ struct LessonActivity: ActivityAttributes {
         var start: Date
         var end: Date
         var hasStarted: Bool
+        var isExam: Bool? = nil
     }
     var lessonID: String
     var account: String

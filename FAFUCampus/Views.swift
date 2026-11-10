@@ -166,6 +166,7 @@ struct PageHeadingToolbar: ToolbarContent {
 struct SemesterControls: View {
     let options: PageOptions
     let disabled: Bool
+    var recordCount: Int? = nil
     let query: (Semester) -> Void
     @State private var year = ""
     @State private var term = ""
@@ -176,6 +177,7 @@ struct SemesterControls: View {
                     Picker("学年", selection: $year) { ForEach(options.years) { Text($0.label).tag($0.value) } }
                     Picker("学期", selection: $term) { ForEach(options.terms) { Text("第\($0.label)学期").tag($0.value) } }
                     Spacer(minLength: 0)
+                    if let recordCount { Text("\(recordCount) 条记录").font(.caption).foregroundStyle(.secondary) }
                     Button("查询") { query(Semester(year: year, term: term)) }
                         .disabled(disabled || year.isEmpty || term.isEmpty)
                 }.pickerStyle(.menu)
@@ -198,6 +200,7 @@ struct RecordsView: View {
     @EnvironmentObject var store: CampusStore
     let feature: CampusStore.Feature
     @State private var showSearch = false
+    @State private var ascending = true
     private let search = ""
     @State private var year = "全部"
     @State private var term = "全部"
@@ -206,11 +209,12 @@ struct RecordsView: View {
     private var years: [String] { Array(Set(allRecords.map { $0.value(["学年"]) }.filter { !$0.isEmpty })).sorted(by: >) }
     private var terms: [String] { Array(Set(allRecords.map { $0.value(["学期"]) }.filter { !$0.isEmpty })).sorted() }
     private var filtered: [TableRecord] {
-        allRecords.filter {
+        let records = allRecords.filter {
             (search.isEmpty || $0.fields.contains { $0.value.localizedCaseInsensitiveContains(search) })
             && (feature != .grades || year == "全部" || $0.value(["学年"]) == year)
             && (feature != .grades || term == "全部" || $0.value(["学期"]) == term)
         }
+        return RecordOrdering.sorted(records, byScore: feature == .grades, ascending: ascending)
     }
     var body: some View {
         NavigationStack {
@@ -222,7 +226,7 @@ struct RecordsView: View {
                         Button("恢复连接") { Task { await store.restoreConnection() } }.disabled(store.busy)
                     }
                     if feature == .exams, let report {
-                        SemesterControls(options: report.options, disabled: !store.isOnline || store.busy) { semester in
+                        SemesterControls(options: report.options, disabled: !store.isOnline || store.busy, recordCount: filtered.count) { semester in
                             Task { await store.refresh(.exams, semester: semester) }
                         }
                     }
@@ -236,6 +240,8 @@ struct RecordsView: View {
                                 Text("全部学期").tag("全部")
                                 ForEach(terms, id: \.self) { Text("第\($0)学期").tag($0) }
                             }
+                            Spacer(minLength: 0)
+                            Text("\(filtered.count) 条记录").font(.caption).foregroundStyle(.secondary)
                         }.pickerStyle(.menu)
                     }
                     if report == nil {
@@ -243,7 +249,6 @@ struct RecordsView: View {
                     } else if filtered.isEmpty {
                         EmptyPanel(title: "暂无符合条件的记录", detail: search.isEmpty ? "学校页面当前未列出相应记录。" : "试试其他关键词。")
                     } else {
-                        Text("\(filtered.count) 条记录").font(.caption).foregroundStyle(.secondary)
                         ForEach(filtered) { record in
                             NavigationLink { RecordDetailView(record: record) } label: {
                                 HStack(alignment: .top, spacing: 16) {
@@ -262,6 +267,13 @@ struct RecordsView: View {
                                         Text(record.value(["成绩", "总评成绩"]))
                                             .font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(gradeColor(record.value(["成绩", "总评成绩"])))
                                     }
+                                    if feature == .exams {
+                                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                                            Text(ScheduledExam(record: record)?.countdown(at: context.date) ?? "时间待定")
+                                                .font(.caption.weight(.semibold)).foregroundStyle(Palette.forest)
+                                                .multilineTextAlignment(.trailing).frame(width: 90, alignment: .trailing)
+                                        }
+                                    }
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                                 }.padding(20).background(Palette.card, in: RoundedRectangle(cornerRadius: 18))
                             }.buttonStyle(.plain)
@@ -273,6 +285,11 @@ struct RecordsView: View {
             .sheet(isPresented: $showSearch) { RecordsSearchView(records: filtered, title: feature.rawValue) }
             .toolbar {
                 PageHeadingToolbar(title: feature == .grades ? "我的成绩" : "考试安排", date: report?.fetchedAt)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { ascending.toggle() } label: {
+                        Image(systemName: ascending ? "arrow.up" : "arrow.down")
+                    }.accessibilityLabel((feature == .grades ? "分数" : "考试时间") + (ascending ? "升序，点击改为降序" : "降序，点击改为升序"))
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
                         .accessibilityLabel("搜索\(feature.rawValue)")
@@ -341,7 +358,7 @@ struct AccountView: View {
                     Button("刷新实时活动") {
                         liveEnabled = true
                         Task {
-                            await activities.refresh(lessons: planner.activityLessons(account: store.snapshot?.student.account ?? "", report: store.snapshot?.timetable, on: .now), account: store.snapshot?.student.account ?? "", enabled: store.mode != .demo && store.mode != .login)
+                            await activities.refresh(exams: store.snapshot?.exams?.records ?? [], lessons: planner.activityLessons(account: store.snapshot?.student.account ?? "", report: store.snapshot?.timetable, on: .now), account: store.snapshot?.student.account ?? "", enabled: store.mode != .demo && store.mode != .login)
                             store.message = activities.message ?? "已重新预约当天最近的课程实时活动。"
                         }
                     }

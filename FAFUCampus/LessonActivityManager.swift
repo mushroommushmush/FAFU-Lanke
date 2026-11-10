@@ -10,17 +10,17 @@ import Combine
         set { if currentMessage != newValue { currentMessage = newValue } }
     }
     private var syncing = false
-    func refresh(lessons: [Lesson], account: String, enabled: Bool) async {
+    func refresh(exams: [TableRecord] = [], lessons: [Lesson], account: String, enabled: Bool) async {
         guard !syncing else { message = "正在更新，请稍后再试。"; return }
         for activity in Activity<LessonActivity>.activities { await activity.end(nil, dismissalPolicy: .immediate) }
         for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("lanke.live.requested." + account + ".") { UserDefaults.standard.removeObject(forKey: key) }
-        await sync(lessons: lessons, account: account, enabled: enabled)
+        await sync(exams: exams, lessons: lessons, account: account, enabled: enabled)
     }
-    func sync(lessons: [Lesson], account: String, enabled: Bool) async {
+    func sync(exams: [TableRecord] = [], lessons: [Lesson], account: String, enabled: Bool) async {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
-        let revision = "0.5.2"
+        let revision = "0.5.4"
         if UserDefaults.standard.string(forKey: "lanke.live.layoutRevision") != revision {
             for activity in Activity<LessonActivity>.activities {
                 await activity.end(nil, dismissalPolicy: .immediate)
@@ -34,7 +34,11 @@ import Combine
         let historyKey = "lanke.live.requested." + account + "." + SchoolSchedule.dayKey(now)
         var requested = Set(UserDefaults.standard.stringArray(forKey: historyKey) ?? [])
         // Keep the nearest two activities within the system's limited activity budget.
-        let desired = enabled ? Array(lessons.filter { $0.end > now }.sorted { $0.start < $1.start }.prefix(2)) : []
+        let examLessons = exams.compactMap { ScheduledExam(record: $0)?.slot }.filter {
+            SchoolSchedule.calendar.isDate($0.start.addingTimeInterval(-3600), inSameDayAs: now)
+                || ($0.start <= now && $0.end > now)
+        }
+        let desired = enabled ? Array(CourseGridLayout.unique(lessons + examLessons).filter { $0.end > now }.sorted { $0.start < $1.start }.prefix(2)) : []
         for activity in Activity<LessonActivity>.activities {
             if activity.attributes.account != account || !desired.contains(where: { $0.id == activity.attributes.lessonID }) {
                 await activity.end(nil, dismissalPolicy: .immediate)
@@ -44,7 +48,7 @@ import Combine
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { message = "请在系统设置中允许览课使用实时活动。"; return }
         if message != nil { message = nil }
         for lesson in desired {
-            let state = LessonActivity.ContentState(name: lesson.name, room: lesson.room, start: lesson.start, end: lesson.end, hasStarted: now >= lesson.start)
+            let state = LessonActivity.ContentState(name: lesson.name, room: lesson.room, start: lesson.start, end: lesson.end, hasStarted: now >= lesson.start, isExam: lesson.id.hasPrefix("exam-"))
             let content = ActivityContent(state: state, staleDate: now < lesson.start ? lesson.start : lesson.end)
             if let activity = Activity<LessonActivity>.activities.first(where: { $0.attributes.lessonID == lesson.id && $0.attributes.account == account }) {
                 if activity.content.state.start != state.start || activity.content.state.end != state.end {
@@ -60,11 +64,11 @@ import Combine
             // Respect a person's decision to dismiss an activity; do not recreate it every tick.
             guard !requested.contains(lesson.id) else { continue }
             do {
-                let notice = lesson.start.addingTimeInterval(-1200)
+                let notice = lesson.start.addingTimeInterval(state.isExam == true ? -3600 : -1200)
                 if notice > now {
                     if #available(iOS 26.0, *) {
                         _ = try Activity.request(attributes: attributes, content: content, pushType: nil,
-                            style: .standard, alertConfiguration: AlertConfiguration(title: "即将上课", body: "请查看课程和教室", sound: .default), start: notice)
+                            style: .standard, alertConfiguration: AlertConfiguration(title: state.isExam == true ? "即将考试" : "即将上课", body: state.isExam == true ? "请查看考试和考场" : "请查看课程和教室", sound: .default), start: notice)
                         requested.insert(lesson.id)
                     } else {
                         // iOS18 cannot schedule a future start: create the nearest activities while foregrounded.
@@ -103,6 +107,6 @@ struct ActivityCoordinator: View {
         guard phase == .active else { return }
         let lessons = planner.activityLessons(account: store.snapshot?.student.account ?? "", report: store.snapshot?.timetable, on: Date())
         let allowed = enabled && store.mode != .login && store.mode != .demo
-        Task { await activities.sync(lessons: lessons, account: store.snapshot?.student.account ?? "", enabled: allowed) }
+        Task { await activities.sync(exams: store.snapshot?.exams?.records ?? [], lessons: lessons, account: store.snapshot?.student.account ?? "", enabled: allowed) }
     }
 }
