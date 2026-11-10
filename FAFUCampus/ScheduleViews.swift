@@ -126,11 +126,19 @@ struct ScheduleHome: View {
     @State private var lastToday = SchoolSchedule.dayKey(Date())
     @State private var adding = false
     @State private var selected: Lesson?
+    @State private var selectedExam: TableRecord?
     private let ticker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     private var report: TimetableReport? { library.current?.report ?? store.snapshot?.timetable }
     private var heading: String { library.current?.displayTitle ?? "我的课表" }
     private func refreshSchedule(_ semester: Semester?) async {
-        guard let source = library.current else { await store.refresh(.timetable, semester: semester); return }
+        guard let source = library.current else {
+            let previous = store.snapshot?.timetable?.fetchedAt
+            await store.refresh(.timetable, semester: semester)
+            if let updated = store.snapshot?.timetable, updated.fetchedAt != previous, store.isOnline {
+                await store.refresh(.exams, semester: updated.options.selected)
+            }
+            return
+        }
         if let semester, semester != source.report.options.selected {
             pickerReplacing = source.id; choosingOther = true; return
         }
@@ -145,6 +153,10 @@ struct ScheduleHome: View {
     private var monday: Date { SchoolSchedule.monday(day) }
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
     var body: some View {
+        let exams: [ScheduledExam] = library.selectedID == nil
+            ? (store.snapshot?.exams?.records ?? []).compactMap(ScheduledExam.init(record:)) : []
+        let examRecords = Dictionary(exams.map { ($0.slot.id, $0.record) }, uniquingKeysWith: { first, _ in first })
+        let axis = gridAxis(for: exams)
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: grid ? 10 : 18) {
@@ -154,11 +166,11 @@ struct ScheduleHome: View {
                             Task { await refreshSchedule(value) }
                         }
                     if grid {
-                        weekGrid
+                        weekGrid(exams: exams, records: examRecords, starts: axis.starts, end: axis.end)
                         TimelineView(.periodic(from: .now, by: 15)) { context in
                             ForEach(0..<7, id: \.self) { index in
                                 let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
-                                let extra = planner.lessons(report, on: date).filter { !fitsGrid($0) }
+                                let extra = planner.lessons(report, on: date).filter { !fitsGrid($0, starts: axis.starts, end: axis.end) }
                                 if !extra.isEmpty {
                                     Text("周\(weekdays[index]) · 其他时段").font(.caption).foregroundStyle(.secondary)
                                     ForEach(extra) { lesson in
@@ -175,10 +187,22 @@ struct ScheduleHome: View {
                         }.pickerStyle(.segmented)
                         Text(day.formatted(.dateTime.month().day())).font(.caption).foregroundStyle(.secondary)
                         TimelineView(.periodic(from: .now, by: 15)) { context in
-                            let lessons = planner.lessons(report, on: day)
-                            if lessons.isEmpty { EmptyPanel(title: "这一天没有课程", detail: "可点击右上角＋添加课程。") }
+                            let lessons = agenda(on: day, exams: exams)
+                            if lessons.isEmpty { EmptyPanel(title: "这一天没有课程或考试", detail: "可点击右上角＋添加课程。") }
                             ForEach(lessons) { lesson in
-                                Button { selected = lesson } label: { LessonRow(lesson: lesson, now: context.date) }.buttonStyle(.plain)
+                                Button { open(lesson, exams: examRecords) } label: {
+                                    if let exam = examRecords[lesson.id] {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Label("考试 · " + lesson.name, systemImage: "pencil.and.list.clipboard").font(.headline)
+                                            Text(exam.value(["考试时间", "时间"]))
+                                            if !lesson.room.isEmpty { Text(lesson.room) }
+                                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(16).background(.purple.opacity(0.13), in: RoundedRectangle(cornerRadius: 18))
+                                            .accessibilityElement(children: .combine)
+                                            .accessibilityAddTraits(.isButton)
+                                            .accessibilityIdentifier("exam-\(exam.id)")
+                                    } else { LessonRow(lesson: lesson, now: context.date) }
+                                }.buttonStyle(.plain)
                             }
                         }
                     }
@@ -230,6 +254,12 @@ struct ScheduleHome: View {
             .sheet(isPresented: $adding) { AddLessonView(day: day).environmentObject(planner) }
             .sheet(isPresented: $choosingOther) { ProfessionalPicker(library: library, replacing: pickerReplacing) }
             .sheet(item: $selected) { LessonDetail(lesson: $0).environmentObject(planner) }
+            .sheet(item: $selectedExam) { record in
+                NavigationStack {
+                    RecordDetailView(record: record)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { selectedExam = nil } } }
+                }
+            }
             .alert("课程设置", isPresented: Binding(get: { planner.error != nil }, set: { if !$0 { planner.error = nil } })) {
                 Button("知道了") { planner.error = nil }
             } message: { Text(planner.error ?? "") }
@@ -245,7 +275,29 @@ struct ScheduleHome: View {
     }
     private func moveWeek(_ amount: Int) { day = SchoolSchedule.calendar.date(byAdding: .day, value: amount * 7, to: day)! }
     private let gridRowHeight: CGFloat = 52
-    private var weekGrid: some View {
+    private func agenda(on date: Date, exams: [ScheduledExam]) -> [Lesson] {
+        let slots = exams.map(\.slot).filter { SchoolSchedule.calendar.isDate($0.start, inSameDayAs: date) }
+        return (planner.lessons(report, on: date) + slots).sorted { $0.start < $1.start }
+    }
+    private func open(_ lesson: Lesson, exams: [String: TableRecord]) {
+        if let record = exams[lesson.id] { selectedExam = record }
+        else { selected = lesson }
+    }
+    private func gridAxis(for exams: [ScheduledExam]) -> (starts: [Int], end: Int) {
+        let nextMonday = SchoolSchedule.calendar.date(byAdding: .day, value: 7, to: monday)!
+        let week = exams.map(\.slot).filter { $0.start >= monday && $0.start < nextMonday }
+        var starts = planner.saved.starts
+        var end = starts[starts.count - 1] + 45
+        if let first = week.map({ minute($0.start) }).min(), first < Double(starts[0]) {
+            starts.insert(Int(first), at: 0)
+        }
+        if let last = week.map({ minute($0.end) }).max(), last > Double(end) {
+            starts.append(end)
+            end = Int(last.rounded(.up))
+        }
+        return (starts, end)
+    }
+    private func weekGrid(exams: [ScheduledExam], records: [String: TableRecord], starts: [Int], end: Int) -> some View {
         GeometryReader { geometry in
             let gap: CGFloat = 2
             let timeWidth: CGFloat = 34
@@ -253,16 +305,18 @@ struct ScheduleHome: View {
             HStack(alignment: .top, spacing: gap) {
                 VStack(spacing: 0) {
                     Text("时间").font(.system(size: 10)).frame(height: 34)
-                    ForEach(0..<12, id: \.self) { index in
+                    ForEach(starts, id: \.self) { start in
                         VStack(spacing: 3) {
-                            Text("\(index + 1)").font(.system(size: 12, weight: .medium))
-                            Text(String(format: "%02d:%02d", planner.saved.starts[index]/60, planner.saved.starts[index]%60)).font(.system(size: 9)).monospacedDigit()
+                            if let period = planner.saved.starts.firstIndex(of: start) {
+                                Text("\(period + 1)").font(.system(size: 12, weight: .medium))
+                            }
+                            Text(String(format: "%02d:%02d", start / 60, start % 60)).font(.system(size: 9)).monospacedDigit()
                         }.frame(height: gridRowHeight)
                     }
                 }.frame(width: timeWidth)
                 ForEach(0..<7, id: \.self) { index in
                     let date = SchoolSchedule.calendar.date(byAdding: .day, value: index, to: monday)!
-                    let courses = planner.lessons(report, on: date).filter { fitsGrid($0) }
+                    let courses = agenda(on: date, exams: exams).filter { fitsGrid($0, starts: starts, end: end) }
                     let layout = CourseGridLayout.placements(courses)
                     VStack(spacing: 0) {
                         VStack(spacing: 2) {
@@ -272,7 +326,7 @@ struct ScheduleHome: View {
                             .background(SchoolSchedule.calendar.isDateInToday(date) ? Palette.forest.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 6))
                         ZStack(alignment: .topLeading) {
                             VStack(spacing: 0) {
-                                ForEach(0..<12, id: \.self) { _ in
+                                ForEach(starts, id: \.self) { _ in
                                     Rectangle().fill(Color.secondary.opacity(0.06)).frame(height: gridRowHeight - 1).padding(.bottom, 1)
                                 }
                             }
@@ -280,40 +334,42 @@ struct ScheduleHome: View {
                                 TimelineView(.periodic(from: .now, by: 15)) { context in
                                     let placement = layout[lesson.id]
                                     let cardWidth = dayWidth / CGFloat(placement?.columns ?? 1)
-                                    let cardHeight = max(24, position(lesson.end, end: true) - position(lesson.start) - 1)
-                                    Button { selected = lesson } label: {
+                                    let isExam = records[lesson.id] != nil
+                                    let top = position(lesson.start, starts: starts, end: end)
+                                    let bottom = position(lesson.end, starts: starts, end: end)
+                                    let cardHeight = max(24, bottom - top - 1)
+                                    Button { open(lesson, exams: records) } label: {
                                         VStack(spacing: 3) {
-                                            Text(lesson.name).font(.system(size: 10, weight: .medium)).lineLimit(cardHeight < 36 ? 1 : 4)
+                                            Text(isExam ? "考试 · " + lesson.name : lesson.name).font(.system(size: 10, weight: .medium)).lineLimit(cardHeight < 36 ? 1 : 4)
                                             if cardHeight >= 36 { Text("@" + (lesson.room.isEmpty ? "待确认" : lesson.room)).font(.system(size: 9)).lineLimit(2) }
-                                        }.foregroundStyle(.black).multilineTextAlignment(.center)
+                                        }.foregroundStyle(isExam ? Color.primary : .black).multilineTextAlignment(.center)
                                             .padding(.horizontal, 2).padding(.vertical, cardHeight < 36 ? 1 : 4)
                                             .frame(width: cardWidth, height: cardHeight).clipped()
-                                            .background(LessonColors.course(lesson.name), in: RoundedRectangle(cornerRadius: 6))
-                                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, lineWidth: 2))
-                                            .shadow(color: lesson.phase(at: context.date) == .soon ? LessonColors.soon.opacity(0.8) : .clear, radius: 3)
+                                            .background(isExam ? Color.purple.opacity(0.35) : LessonColors.course(lesson.name), in: RoundedRectangle(cornerRadius: 6))
+                                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(!isExam && lesson.phase(at: context.date) == .soon ? LessonColors.soon : .clear, lineWidth: 2))
+                                            .shadow(color: !isExam && lesson.phase(at: context.date) == .soon ? LessonColors.soon.opacity(0.8) : .clear, radius: 3)
                                     }.buttonStyle(.plain)
-                                        .accessibilityLabel(lesson.name + "，教室" + lesson.room)
-                                        .offset(x: CGFloat(placement?.column ?? 0) * cardWidth, y: position(lesson.start))
+                                        .accessibilityLabel((isExam ? "考试，" : "") + lesson.name + "，" + lesson.room)
+                                        .offset(x: CGFloat(placement?.column ?? 0) * cardWidth, y: top)
                                 }
                             }
-                        }.frame(width: dayWidth, height: gridRowHeight * 12)
+                        }.frame(width: dayWidth, height: gridRowHeight * CGFloat(starts.count))
                     }.frame(width: dayWidth)
                 }
             }.frame(width: geometry.size.width, alignment: .leading)
-        }.frame(height: 34 + gridRowHeight * 12)
+        }.frame(height: 34 + gridRowHeight * CGFloat(starts.count))
     }
-    private func fitsGrid(_ lesson: Lesson) -> Bool {
-        let cal = SchoolSchedule.calendar
-        let start = cal.dateComponents([.hour, .minute], from: lesson.start)
-        let end = cal.dateComponents([.hour, .minute], from: lesson.end)
-        return cal.isDate(lesson.start, inSameDayAs: lesson.end)
-            && start.hour! * 60 + start.minute! >= planner.saved.starts[0]
-            && end.hour! * 60 + end.minute! <= planner.saved.starts[11] + 45
+    private func fitsGrid(_ lesson: Lesson, starts: [Int], end: Int) -> Bool {
+        SchoolSchedule.calendar.isDate(lesson.start, inSameDayAs: lesson.end)
+            && minute(lesson.start) >= Double(starts[0])
+            && minute(lesson.end) <= Double(end)
     }
-    private func position(_ date: Date, end: Bool = false) -> CGFloat {
+    private func minute(_ date: Date) -> Double {
         let parts = SchoolSchedule.calendar.dateComponents([.hour, .minute, .second], from: date)
-        let minute = Double(parts.hour! * 60 + parts.minute!) + Double(parts.second ?? 0) / 60
-        return CGFloat(SchoolSchedule.gridPosition(minute: minute, starts: planner.saved.starts)) * gridRowHeight
+        return Double(parts.hour! * 60 + parts.minute!) + Double(parts.second ?? 0) / 60
+    }
+    private func position(_ date: Date, starts: [Int], end: Int) -> CGFloat {
+        CGFloat(SchoolSchedule.gridPosition(minute: minute(date), starts: starts, endMinute: end)) * gridRowHeight
     }
 }
 
