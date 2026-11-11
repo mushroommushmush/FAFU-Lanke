@@ -94,7 +94,6 @@ struct ScheduleQueryBar: View {
 }
 
 struct WeekGlassPicker: View {
-    @State private var showWeeks = false
     @Binding var day: Date
     let beginning: Date
     private var week: Int { SchoolSchedule.week(on: day, beginning: beginning) }
@@ -105,21 +104,29 @@ struct WeekGlassPicker: View {
         }
         .pickerStyle(.segmented).controlSize(.small).frame(width: 140)
         .accessibilityLabel("选择周次")
-        .onLongPressGesture { showWeeks = true }
-        .sheet(isPresented: $showWeeks) {
-            NavigationStack {
-                List(1...30, id: \.self) { value in
-                    Button { choose(value); showWeeks = false } label: {
-                        HStack {
+        .overlay(alignment: .leading) {
+            // Only the selected segment opens the full native menu. The adjacent
+            // segments remain the system picker, including its selection animation.
+            Menu {
+                ForEach(1...30, id: \.self) { value in
+                    Button { choose(value) } label: {
+                        if value == week {
+                            Label("第\(value)周", systemImage: "checkmark")
+                        } else {
                             Text("第\(value)周")
-                            Spacer()
-                            if value == week { Image(systemName: "checkmark") }
                         }
                     }
                 }
-                .navigationTitle("选择周次").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showWeeks = false } } }
-            }.presentationDetents([.medium, .large])
+            } label: {
+                // The picker already draws the title; do not draw it twice in
+                // the menu's source preview when the menu opens.
+                Color.clear
+                    .frame(width: 140 / 3, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("第\(week)周，选择其他周次")
+            .offset(x: CGFloat(week - neighbors.lowerBound) * (140 / 3))
         }
     }
     private func choose(_ value: Int) {

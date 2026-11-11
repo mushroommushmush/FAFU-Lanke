@@ -174,7 +174,17 @@ struct SemesterControls: View {
         if !options.years.isEmpty && !options.terms.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Menu { Picker("学年", selection: $year) { ForEach(options.years) { Text($0.label).tag($0.value) } } } label: { Text(year.split(separator: "-").map { String($0.suffix(2)) }.joined(separator: "–") + "⌄") }.fixedSize(horizontal: true, vertical: false)
+                    Menu {
+                        ForEach(options.years) { option in
+                            Button { year = option.value } label: {
+                                if option.value == year {
+                                    Label(option.label, systemImage: "checkmark")
+                                } else {
+                                    Text(option.label)
+                                }
+                            }
+                        }
+                    } label: { Text(year.split(separator: "-").map { String($0.suffix(2)) }.joined(separator: "–") + "⌄") }.fixedSize(horizontal: true, vertical: false)
                     Picker("学期", selection: $term) { ForEach(options.terms) { Text("第\($0.label)学期").tag($0.value) } }.fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 0)
                     if let recordCount { Text("\(recordCount) 条记录").font(.caption).foregroundStyle(.secondary) }
