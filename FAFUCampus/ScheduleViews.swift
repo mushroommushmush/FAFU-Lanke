@@ -104,30 +104,7 @@ struct WeekGlassPicker: View {
         }
         .pickerStyle(.segmented).controlSize(.small).frame(width: 140)
         .accessibilityLabel("选择周次")
-        .overlay(alignment: .leading) {
-            // Only the selected segment opens the full native menu. The adjacent
-            // segments remain the system picker, including its selection animation.
-            Menu {
-                ForEach(1...30, id: \.self) { value in
-                    Button { choose(value) } label: {
-                        if value == week {
-                            Label("第\(value)周", systemImage: "checkmark")
-                        } else {
-                            Text("第\(value)周")
-                        }
-                    }
-                }
-            } label: {
-                // The picker already draws the title; do not draw it twice in
-                // the menu's source preview when the menu opens.
-                Color.clear
-                    .frame(width: 140 / 3, height: 32)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("第\(week)周，选择其他周次")
-            .offset(x: CGFloat(week - neighbors.lowerBound) * (140 / 3))
-        }
+        .contextMenu { ForEach(1...30, id: \.self) { value in Button("第\(value)周") { choose(value) } } }
     }
     private func choose(_ value: Int) {
         let target = max(1, min(30, value))
