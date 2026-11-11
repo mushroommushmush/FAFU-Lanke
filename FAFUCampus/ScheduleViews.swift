@@ -94,6 +94,7 @@ struct ScheduleQueryBar: View {
 }
 
 struct WeekGlassPicker: View {
+    @State private var showWeeks = false
     @Binding var day: Date
     let beginning: Date
     private var week: Int { SchoolSchedule.week(on: day, beginning: beginning) }
@@ -104,7 +105,22 @@ struct WeekGlassPicker: View {
         }
         .pickerStyle(.segmented).controlSize(.small).frame(width: 140)
         .accessibilityLabel("选择周次")
-        .contextMenu { ForEach(1...30, id: \.self) { value in Button("第\(value)周") { choose(value) } } }
+        .onLongPressGesture { showWeeks = true }
+        .sheet(isPresented: $showWeeks) {
+            NavigationStack {
+                List(1...30, id: \.self) { value in
+                    Button { choose(value); showWeeks = false } label: {
+                        HStack {
+                            Text("第\(value)周")
+                            Spacer()
+                            if value == week { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+                .navigationTitle("选择周次").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showWeeks = false } } }
+            }.presentationDetents([.medium, .large])
+        }
     }
     private func choose(_ value: Int) {
         let target = max(1, min(30, value))

@@ -173,14 +173,14 @@ struct SemesterControls: View {
     var body: some View {
         if !options.years.isEmpty && !options.terms.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Picker("学年", selection: $year) { ForEach(options.years) { Text($0.label).tag($0.value) } }
-                    Picker("学期", selection: $term) { ForEach(options.terms) { Text("第\($0.label)学期").tag($0.value) } }
+                HStack(spacing: 6) {
+                    Menu { Picker("学年", selection: $year) { ForEach(options.years) { Text($0.label).tag($0.value) } } } label: { Text(year.split(separator: "-").map { String($0.suffix(2)) }.joined(separator: "–") + "⌄") }.fixedSize(horizontal: true, vertical: false)
+                    Picker("学期", selection: $term) { ForEach(options.terms) { Text("第\($0.label)学期").tag($0.value) } }.fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 0)
                     if let recordCount { Text("\(recordCount) 条记录").font(.caption).foregroundStyle(.secondary) }
                     Button("查询") { query(Semester(year: year, term: term)) }
                         .disabled(disabled || year.isEmpty || term.isEmpty)
-                }.pickerStyle(.menu)
+                }.pickerStyle(.menu).font(.subheadline).lineLimit(1).minimumScaleFactor(0.75)
             }
             .task(id: options.selected.title) { year = options.selected.year; term = options.selected.term }
         }

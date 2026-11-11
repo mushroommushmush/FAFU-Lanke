@@ -8,6 +8,12 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "桃1-137"]), "桃1-137")
         XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "(换0420)"]), "")
     }
+    func testTeachingVenuePrecedesAppendedExamVenue() {
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["余丽燕", "禧103", "2026年12月09日 (18:30-20:30)", "创103", "(换0366)"]), "禧103")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "田208", "2026年12月15日 (10:00-12:00)", "创203"]), "田208")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["张黎明", "禧104", "(停0331)"]), "禧104")
+        XCTAssertEqual(SchoolSchedule.classroom(in: ["(停0331)"]), "")
+    }
     func testLetteredClassrooms() {
         XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "诚A601", "(换0420)"]), "诚A601")
         XCTAssertEqual(SchoolSchedule.classroom(in: ["教师", "诚 B 402"]), "诚B402")

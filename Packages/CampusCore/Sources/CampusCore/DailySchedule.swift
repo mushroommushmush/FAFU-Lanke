@@ -43,11 +43,13 @@ public enum SchoolSchedule {
         return Double(starts.count)
     }
     public static func classroom(in lines: [String]) -> String {
-        for line in lines.reversed() {
+        for line in lines {
+            // The school appends the exam date and venue after the teaching venue.
+            if !matches("[0-9]{4}年|[0-9]{4}[-/][0-9]{1,2}[-/]", line).isEmpty || line.contains("考试") { break }
             // Course-change identifiers such as (换0420) are not room names.
-            let cleaned = line.replacingOccurrences(of: "[（(]换[^）)]*[）)]", with: "", options: .regularExpression)
+            let cleaned = line.replacingOccurrences(of: "[（(][换调停补][^）)]*[）)]", with: "", options: .regularExpression)
             let rooms = matches("(?<![\\p{Han}0-9])([\\p{Han}]\\s*[A-Za-z]?\\s*[0-9]+(?:[-－][0-9]+)?)", cleaned)
-            if let room = rooms.map({ $0[1] }).first(where: { !["换", "第", "周", "节"].contains(String($0.prefix(1))) }) {
+            if let room = rooms.map({ $0[1] }).first(where: { !["换", "调", "停", "补", "第", "周", "节"].contains(String($0.prefix(1))) }) {
                 return room.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
             }
         }
